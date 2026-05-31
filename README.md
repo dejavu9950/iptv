@@ -369,15 +369,42 @@ docker run -d -p 1905:1905 \
 
 ### 配置说明
 
-| 变量名          | 默认值 | 类型    | 介绍                                                                                      |
-| --------------- | ------ | ------- | ----------------------------------------------------------------------------------------- |
-| muserId         |        | string  | 用户id（仅VIP用户需要配置）<br>可在网页端登录获取                                          |
-| mtoken          |        | string  | 用户token（仅VIP用户需要配置）<br>可在网页端登录获取                                       |
-| mport           | 1905   | number  | 本地运行端口号                                                                            |
-| mhost           |        | string  | 公网/自定义访问地址<br>格式<http://ip:port>                                               |
-| mrateType       | 3      | number  | 画质<br>2: 标清 (480p)<br>3: 高清 (720p)<br>4: 蓝光 (1080p，需VIP)<br>7: 原画 (1080p+，需VIP)<br>9: 4K (2160p，需VIP) |
-| mpass           |        | string  | 访问密码 大小写字母和数字<br>添加后访问格式 <http://ip:port/mpass/>...                    |
-                                           |
+> 🎮 **游客模式开箱即用，下面这些全部留空也能跑。** 大多数人最多动账号 / 画质 / 持久化几项即可，其余进阶项建议在管理后台直接设置，不必记环境变量。
+
+#### 🔹 常用配置（够大多数人用）
+
+| 变量名 | 默认值 | 说明 |
+| --- | --- | --- |
+| muserId | | 咪咕账号 ID（**仅 VIP 高画质需要**，游客留空） |
+| mtoken | | 咪咕登录 token（同上，网页端登录后获取） |
+| mhost | | 公网 / NAS 访问地址，如 `http://192.168.1.100:1905` |
+| mrateType | 3 | 画质：2 标清 / 3 高清 / 4 蓝光(需 VIP) |
+| mpass | | 访问密码（可选），设置后访问 `http://ip:port/密码/...` |
+| mdataDir | | 持久化目录；**Docker 强烈建议设为 `/migu/data` 并挂载卷**，升级镜像后配置不丢失 |
+
+> 💡 进阶项（管理页路径、HDR / H.265、更新间隔、token 刷新等）可在 **管理后台 →「系统配置」** 页里改，保存即时生效；完整环境变量见下方折叠表。
+
+<details>
+<summary><b>📋 完整配置表（全部环境变量）</b></summary>
+
+| 变量名 | 默认值 | 类型 | 介绍 |
+| --- | --- | --- | --- |
+| muserId | | string | 用户id（仅VIP用户需要配置）<br>可在网页端登录获取 |
+| mtoken | | string | 用户token（仅VIP用户需要配置）<br>可在网页端登录获取 |
+| mport | 1905 | number | 本地运行端口号 |
+| mhost | | string | 公网/自定义访问地址<br>格式<http://ip:port> |
+| mrateType | 3 | number | 画质<br>2: 标清 (480p)<br>3: 高清 (720p)<br>4: 蓝光 (1080p，需VIP)<br>7: 原画 (1080p+，需VIP)<br>9: 4K (2160p，需VIP) |
+| mpass | | string | 访问密码 大小写字母和数字<br>添加后访问格式 <http://ip:port/mpass/>... |
+| madminPath | admin | string | 管理页面自定义路径，如填 `console` 则用 `/console` 访问后台（`/admin` 失效）<br>保留字 api/player/favicon.ico 与非法值会回退 admin |
+| menableHDR | true | boolean | 是否开启 HDR（vivid/4kvivid）<br>设 `false` 关闭 |
+| menableH265 | true | boolean | 是否开启 H.265 原画<br>有兼容性问题（如浏览器无画面）时设 `false` 关闭 |
+| mupdateInterval | 8 | number | 节目单 / 源更新间隔（小时），不建议过短 |
+| mrefreshToken | true | boolean | 是否每月刷新咪咕 token<br>**可能导致封号**，可设 `false` 关闭 |
+| mdataDir | 当前目录 | string | 配置 / 数据持久化目录（**仅环境变量可设**）<br>Docker 部署建议设为 `/migu/data` 并挂载卷，升级镜像后配置不丢失 |
+
+> 说明：除 `mdataDir`/`mport` 外，以上多数项也可在 `system-config.json` 或管理后台「系统配置」页修改；后台保存即时生效（端口与更新间隔需重启）。
+
+</details>
 
 ### 高级功能详解
 
