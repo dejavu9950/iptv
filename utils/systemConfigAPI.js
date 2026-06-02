@@ -12,11 +12,35 @@ const SYSTEM_CONFIG_PATH = dataPath('system-config.json')
 /**
  * 获取系统配置
  */
+// 各配置项对应的环境变量名（用于提示哪些项被环境变量控制）
+const ENV_KEY_MAP = {
+  userId: 'muserId',
+  token: 'mtoken',
+  port: 'mport',
+  host: 'mhost',
+  rateType: 'mrateType',
+  pass: 'mpass',
+  enableHDR: 'menableHDR',
+  enableH265: 'menableH265',
+  programInfoUpdateInterval: 'mupdateInterval',
+  refreshToken: 'mrefreshToken',
+  adminPath: 'madminPath'
+}
+
 export function getSystemConfigAPI() {
   try {
     // 返回「实际生效」的配置：config.js 已把 system-config.json + 环境变量 + 默认值 解析合并。
     // 这样无论 id/token 等是用环境变量(muserId/mtoken…)还是配置文件设置的，
     // 管理页表单都能正确显示当前生效值（修复换电脑/无浏览器自动填充时表单显示为空的问题）。
+
+    // 标记哪些项被环境变量设置（前端据此提示：清空保存会回退到环境变量值，需改 compose）
+    const envOverrides = {}
+    for (const [field, envKey] of Object.entries(ENV_KEY_MAP)) {
+      if (process.env[envKey] !== undefined && process.env[envKey] !== '') {
+        envOverrides[field] = true
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -31,7 +55,8 @@ export function getSystemConfigAPI() {
         programInfoUpdateInterval,
         refreshToken,
         adminPath
-      }
+      },
+      envOverrides
     }
   } catch (error) {
     return {

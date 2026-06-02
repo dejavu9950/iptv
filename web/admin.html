@@ -1724,7 +1724,8 @@
                 <div class="system-config-warning">
                     ⚠️ 修改系统配置后需要<strong>重启服务</strong>才能生效
                 </div>
-                
+                <div id="envOverrideWarning" style="display: none; margin: 10px 0; padding: 12px 14px; background: #fff7e6; border: 1px solid #ffd591; border-left: 4px solid #fa8c16; border-radius: 6px; color: #874d00; font-size: 13px; line-height: 1.7;"></div>
+
                 <div class="bookmarklet-section">
                     <div class="bookmarklet-title">
                         <span>📖</span>
@@ -2927,6 +2928,30 @@
             document.getElementById('sysProgramInterval').value = systemConfig.programInfoUpdateInterval || '8';
             document.getElementById('sysEnableHDR').checked = systemConfig.enableHDR !== false;
             document.getElementById('sysEnableH265').checked = systemConfig.enableH265 !== false;
+            renderEnvOverrideWarning();
+        }
+
+        // 提示：哪些项是被 docker-compose 环境变量控制的（此处修改/清空可能不生效，需改 compose）
+        function renderEnvOverrideWarning() {
+            const box = document.getElementById('envOverrideWarning');
+            if (!box) return;
+            const labels = {
+                userId: '咪咕账号ID', token: '咪咕Token', port: '端口', host: '公网地址',
+                rateType: '画质', pass: '访问密码', enableHDR: 'HDR', enableH265: 'H.265',
+                programInfoUpdateInterval: '更新间隔', refreshToken: 'token刷新', adminPath: '管理页面路径'
+            };
+            const overrides = systemConfig.envOverrides || {};
+            const names = Object.keys(overrides).filter(k => overrides[k]).map(k => labels[k] || k);
+            if (names.length === 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'block';
+            box.innerHTML =
+                '⚠️ 以下配置由 <strong>docker-compose 环境变量</strong> 设置：<strong>' + names.join('、') + '</strong><br>' +
+                '在此填入新值可临时覆盖，但<strong>清空后保存会回退到环境变量的值</strong>（环境变量为兜底）。' +
+                '要彻底修改或移除，请改 <code>docker-compose.yml</code> 里对应的 <code>m*</code> 变量后重启容器。';
         }
 
         // 初始化咪咕账号获取Bookmarklet

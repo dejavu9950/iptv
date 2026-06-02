@@ -118,7 +118,8 @@ const server = http.createServer(async (req, res) => {
       printBlue("API: 获取系统配置")
       const result = getSystemConfigAPI()
       res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
-      res.end(JSON.stringify(result.success ? result.data : {}));
+      // 附带 envOverrides（哪些项被环境变量控制），供前端提示；不影响表单字段读取
+      res.end(JSON.stringify(result.success ? { ...result.data, envOverrides: result.envOverrides || {} } : {}));
       return
     }
 
