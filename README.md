@@ -699,7 +699,10 @@ cd iPTV
 ```shell
 node app.js
 #lsof -ti:1905 | xargs kill -9 && node app.js
-#node scripts/probe-m3u.mjs
+#node scripts/probe-m3u.mjs              # 只看报告、不改文件
+#DRY_RUN=0 node scripts/probe-m3u.mjs    # 探活 + 直接删死链
+# 然后 git add IPTV.m3u && git commit && git push
+
 ```
 
 若需要修改配置，可以使用以下命令
