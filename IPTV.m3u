@@ -25,16 +25,6 @@ https://dxtx.hntv.tv/live/wssj.m3u8?txSecret=c38b4d31ba4c45c6babb5c47132123e3&tx
 http://cdn6.163189.xyz/163189/amty
 #EXTINF:-1 group-title="体育",RTM ASEAN
 https://d25tgymtnqzu8s.cloudfront.net/event/smil:event1/chunklist_b2596000_slENG.m3u8
-#EXTINF:-1 tvg-name="五星體育" group-title="体育",五星体育
-https://t.freetv.fun/live/wu-xing-ti-yu-1.m3u8
-#EXTINF:-1 tvg-name="廣東體育" group-title="体育",广东体育
-https://t.freetv.fun/live/yan-dong-ti-yu-3.m3u8
-#EXTINF:-1 tvg-name="智林體育" group-title="体育",智林體育
-https://t.freetv.fun/live/zhi-lin-ti-yu-1.php
-#EXTINF:-1 tvg-name="BeIn Sports(US)" group-title="体育",bein sports xtra
-https://t.freetv.fun/live/bein-sports-xtra-2.m3u8
-#EXTINF:-1 tvg-name="UFC TV" group-title="体育",UFC
-https://t.freetv.fun/live/ufc-5.m3u8
 
 #EXTINF:-1 group-title="曲艺",梨园频道
 https://dxtx.hntv.tv/live/lypd.m3u8?txSecret=10c771842a0be59e8b575d765173ec96&txTime=7B923E0A&wsSecret=1966aa8a0405e1541cff782f56c75447&wsTime=1770400669
@@ -101,8 +91,6 @@ https://cdn.163189.xyz/163189/viu
 rtmp://f13h.mine.nu/sat/tv581
 #EXTINF:-1 group-title="亚太",耀才财经
 https://v3.mediacast.hk/webcast/bshdlive-pc/playlist.m3u8
-#EXTINF:-1 tvg-name="鏡新聞" group-title="亚太",镜新闻
-https://stream1.freetv.fun/0a7c84c40ea7b310b9886e6c708068403f8fcd0d550d04c3a2e9e95ae394eaa1.m3u8
 #EXTINF:-1 group-title="亚太",泰国ASTV
 http://news1.live14.com/stream/news1_hi.m3u8
 #EXTINF:-1 group-title="亚太",朝鲜中央台
@@ -138,16 +126,6 @@ http://feilong123.vip/409990236/tv.php?id=ssdy
 http://feilong123.vip/409990236/tv.php?id=sswx
 #EXTINF:-1 group-title="影视",邵氏喜剧
 http://feilong123.vip/409990236/tv.php?id=ssxj
-#EXTINF:-1 group-title="影视",AMC电影台
-https://cdn12.178.indevs.in/163189/0bcf9bb8c452e56a
-#EXTINF:-1 tvg-name="龍華洋片" group-title="影视",龍華洋片[geo-blocked]
-https://stream1.freetv.fun/50dbebf9da6dd967fc756d63c13404595924651e2b5ba6d99039e932466b0620.ctv
-#EXTINF:-1 tvg-name="靖洋戲劇" group-title="影视",靖洋戏剧
-https://stream1.freetv.fun/6fe99a12ac024f6d592a187ef379c9634e4f3b14ac75ebf30a675ca7d8cb454d.ctv
-#EXTINF:-1 tvg-name="靖天電影" group-title="影视",靖天电影
-https://stream1.freetv.fun/6dd2fa11256d9b01e56697fe96435249d3d817b521ae86e3ed484bba403963c6.ctv
-#EXTINF:-1 tvg-name="靖天戲劇" group-title="影视",靖天戏剧
-https://stream1.freetv.fun/b4f15adf935f16285a2c2ef88df0d5a58dd7934a03a8ec7d9f4e57ca2206faf6.ctv
 
 #EXTINF:-1 group-title="纪实",文物宝库
 https://dxtx.hntv.tv/live/wwbk.m3u8?txSecret=317b89626134fd6bea6e129455b5ff18&txTime=7C4C635C&wsSecret=87c5daf4f4c3a09fb4e4cce0843d4a1c&wsTime=1770400669
@@ -304,12 +282,8 @@ http://89.187.179.148:826/anto.j/c9yJDcXyPe/98771
 http://89.187.179.148:826/anto.j/c9yJDcXyPe/98770
 #EXTINF:-1 tvg-id="beIN.SPORTS.1.fr" tvg-name="beIN Sports 1 FR" group-title="海外体育",beIN Sports 1 FR
 http://802017341873.plus-26.com/w4gzmeoiw6/kyul5gyvkp/35522
-#EXTINF:-1 tvg-id="beIN.SPORTS.2.fr" tvg-name="beIN Sports 2 FR" group-title="海外体育",beIN Sports 2 FR
-http://802017341873.plus-26.com/w4gzmeoiw6/kyul5gyvkp/35523
 #EXTINF:-1 tvg-id="beIN.SPORTS.3.fr" tvg-name="beIN Sports 3 FR" group-title="海外体育",beIN Sports 3 FR
 http://802017341873.plus-26.com/w4gzmeoiw6/kyul5gyvkp/50150
-#EXTINF:-1 tvg-id="Canal+.Sport.fr" tvg-name="CANAL+ Sport FR" group-title="海外体育",CANAL+ Sport FR
-http://802017341873.plus-26.com/w4gzmeoiw6/kyul5gyvkp/250
 #EXTINF:-1 tvg-id="Canal+.Sport.360.fr" tvg-name="CANAL+ Sport 360 FR" group-title="海外体育",CANAL+ Sport 360 FR
 http://103trkm25.xyz:8080/oguz35gznlr/gznler35oguz/159774
 #EXTINF:-1 tvg-id="Eurosport.1.fr" tvg-name="Eurosport 1 FR" group-title="海外体育",Eurosport 1 FR
@@ -332,8 +306,6 @@ http://103trkm25.xyz:8080/oguz35gznlr/gznler35oguz/100351
 http://103trkm25.xyz:8080/oguz35gznlr/gznler35oguz/100354
 #EXTINF:-1 tvg-id="Sky.Sport.Tennis.de" tvg-name="Sky Sport Tennis DE" group-title="海外体育",Sky Sport Tennis DE
 http://103trkm25.xyz:8080/oguz35gznlr/gznler35oguz/100358
-#EXTINF:-1 tvg-id="Sky.Sport.Austria.1.HD.de" tvg-name="Sky Sport Austria 1 DE" group-title="海外体育",Sky Sport Austria 1 DE
-http://world-protv.club:8080/GenIptvg@f0DE14aIRn/0h5GuR3HJ0edweFz3DyY/122
 #EXTINF:-1 tvg-id="Movistar.Deportes.es" tvg-name="Deportes por M+ ES" group-title="海外体育",Deportes por M+ ES
 http://802017341873.plus-26.com/w4gzmeoiw6/kyul5gyvkp/201490
 #EXTINF:-1 tvg-id="M+.Golf.es" tvg-name="Golf por M+ ES" group-title="海外体育",Golf por M+ ES
@@ -484,8 +456,6 @@ https://d9ssxzmclhfo4.cloudfront.net/v1/manifest/3722c60a815c199d9c0ef36c5b73da6
 https://dbrb49pjoymg4.cloudfront.net/manifest/3fec3e5cac39a52b2132f9c66c83dae043dc17d4/prod_default_xumo-ams-aws/8076993c-bbf4-4dbc-a77a-9b70047f90e0/4.m3u8
 #EXTINF:-1 tvg-id="99951510" tvg-name="Bowling TV" group-title="海外体育",Bowling TV
 https://d38d8jwr5u7ckx.cloudfront.net/v1/manifest/2235ea0b65a152869ea53a8429808cfe476767a6/test-xumo-linear-main-hlsv3-ams/e4585438-345e-4df5-969b-267de476a01f/4.m3u8
-#EXTINF:-1 tvg-id="US100000704" tvg-name="CBS Sports Golazo Network" group-title="海外体育",CBS Sports Golazo Network
-https://pddl.sharewithyou.dpdns.org/?play=https://jmp2.uk/stvp-US100000704
 #EXTINF:-1 tvg-id="400000285" tvg-name="Cowboy+ Sports" group-title="海外体育",Cowboy+ Sports
 https://s11host2.localnow.api.cms.amdvids.com/v1/manifest/c189661feba961c19bc5fb60b57879ee9b84548a/config13/6734bc78-b4d5-4d7c-95d1-f1c29f5ae1a7/4.m3u8
 #EXTINF:-1 tvg-id="ESPN8.The.Ocho.us2" tvg-name="ESPN8: The Ocho" group-title="海外体育",ESPN8: The Ocho
@@ -504,8 +474,6 @@ https://dzz957bqk62e8.cloudfront.net/v1/manifest/3722c60a815c199d9c0ef36c5b73da6
 https://d1yhx4ygpfwmgm.cloudfront.net/v1/manifest/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-e3fxcyrct0enb/d451c4ef-26a7-42c5-83e6-d8856a48086d/3.m3u8
 #EXTINF:-1 tvg-id="NBC.Sports.Now.us2" tvg-name="NBC Sports NOW" group-title="海外体育",NBC Sports NOW
 https://d4whmvwm0rdvi.cloudfront.net/manifest/3fec3e5cac39a52b2132f9c66c83dae043dc17d4/prod_default_xumo-nbcu-linear/9ed59304-2f35-4c88-9b99-34153edef42b/4.m3u8
-#EXTINF:-1 tvg-id="US350000231" tvg-name="PFL" group-title="海外体育",PFL
-https://aka-live1050.delivery.roku.com/120da388-708f-4b8f-b4f4-8d564c348eb1/t2-origin/out/v1/live_1080.m3u8
 #EXTINF:-1 tvg-id="99991633" tvg-name="PokerGO" group-title="海外体育",PokerGO
 https://dbrb49pjoymg4.cloudfront.net/manifest/3fec3e5cac39a52b2132f9c66c83dae043dc17d4/prod_default_xumo-ams-aws/16d91dca-8293-491b-861e-c4bc917ce7d8/0.m3u8
 #EXTINF:-1 tvg-id="Redbull.Dummy.us" tvg-name="Red Bull TV" group-title="海外体育",Red Bull TV
