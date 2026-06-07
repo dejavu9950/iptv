@@ -11,7 +11,8 @@ import { getChannelsAPI, getExternalSourcesAPI, saveExternalSourcesAPI,
          addExternalSourceAPI, removeExternalSourceAPI, updateExternalSourceAPI,
          setExternalSourceM3u8API, importSubscriptionAPI, getBuiltInSourcesAPI } from "./utils/adminAPI.js";
 import { getSystemConfigAPI, saveSystemConfigAPI } from "./utils/systemConfigAPI.js";
-import { readConfig, saveConfig, parseInterfaceTxt, validateGroupConfig, applyConfig } from "./utils/playlistConfig.js";
+import { readConfig, saveConfig, parseInterfaceTxt, validateGroupConfig, applyConfig,
+         listProfiles, createProfile, renameProfile, deleteProfile } from "./utils/playlistConfig.js";
 import { updateBuiltInSources, updateExternalSources, externalSourceManager } from "./utils/channelMerger.js";
 import { GITHUB_RAW_MIRRORS, isBuiltInSubscriptionSource } from "./utils/externalSources.js";
 
@@ -35,6 +36,10 @@ const server = http.createServer(async (req, res) => {
 
   // 清理 URL，去除查询参数
   const urlPath = url.split('?')[0]
+
+  // 多套 m3u 配置档：从 query ?profile= 取档名（仅 [a-z0-9_-]，非法/缺省=默认档）。
+  // 放 query 而非路径段，避免被下方用户段正则吞成 userId/token、污染回看前缀。
+  const profileParam = (url.match(/[?&]profile=([a-zA-Z0-9_-]{1,64})/)?.[1] || '').toLowerCase()
 
   // 处理 favicon.ico 请求
   if (urlPath === '/favicon.ico') {
@@ -208,7 +213,7 @@ const server = http.createServer(async (req, res) => {
       printBlue("API: 获取我的播放列表")
       try {
         const groups = parseInterfaceTxt()
-        const config = readConfig()
+        const config = readConfig(profileParam)
         const result = applyConfig(groups, config)
         res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
         // 同时返回原始数据和应用配置后的数据
@@ -228,7 +233,7 @@ const server = http.createServer(async (req, res) => {
     if (routePath === '/api/my-playlist-config' && method === 'GET') {
       printBlue("API: 获取播放列表配置")
       try {
-        const config = readConfig()
+        const config = readConfig(profileParam)
         res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ success: true, data: config }));
       } catch (error) {
@@ -290,7 +295,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readBody(req)
         const config = JSON.parse(body)
-        const currentConfig = readConfig()
+        const currentConfig = readConfig(profileParam)
         const currentRenameMap = currentConfig.groupRenameMap || {}
         const nextRenameMap = config.groupRenameMap || {}
         const currentCustomGroups = currentConfig.customGroups || []
@@ -309,10 +314,42 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        const result = saveConfig(config)
+        const result = saveConfig(profileParam, config)
         res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify(result));
         printGreen("播放列表配置已保存")
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify({ success: false, message: error.message }));
+      }
+      return
+    }
+
+    // 配置档（多套 m3u）管理：列表 / 新建(可复制) / 改名 / 删除
+    if (routePath === '/api/my-playlist-profiles' && method === 'GET') {
+      printBlue("API: 获取配置档列表")
+      res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
+      res.end(JSON.stringify({ success: true, data: listProfiles() }));
+      return
+    }
+
+    if (routePath === '/api/my-playlist-profiles' && method === 'POST') {
+      try {
+        const body = await readBody(req)
+        const data = JSON.parse(body)
+        let result
+        if (data.action === 'create') {
+          result = createProfile({ id: data.id, name: data.name, fromProfile: data.from })
+        } else if (data.action === 'rename') {
+          result = renameProfile({ id: data.id, name: data.name })
+        } else if (data.action === 'delete') {
+          result = deleteProfile(data.id)
+        } else {
+          result = { success: false, message: '未知操作' }
+        }
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify(result));
+        printGreen(`配置档${data.action}操作完成`)
       } catch (error) {
         res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ success: false, message: error.message }));
@@ -380,15 +417,18 @@ const server = http.createServer(async (req, res) => {
 
   const interfaceList = "/,/interface.txt,/m3u,/txt,/playback.xml"
 
+  // 去掉 query（含 ?profile=）后再做接口匹配/选盘；profile 走 profileParam 传入，回看/EPG 自动沿用同一 base
+  const routeUrlPath = routeUrl.split('?')[0]
+
   // 接口
-  if (interfaceList.indexOf(routeUrl) !== -1) {
-    const interfaceObj = interfaceStr(routeUrl, headers, urlUserId, urlToken)
+  if (interfaceList.indexOf(routeUrlPath) !== -1) {
+    const interfaceObj = interfaceStr(routeUrlPath, headers, urlUserId, urlToken, profileParam)
     if (interfaceObj.content == null) {
       interfaceObj.content = "获取失败"
     }
     // 设置响应头
     res.setHeader('Content-Type', interfaceObj.contentType);
-    if (routeUrl == "/m3u") {
+    if (routeUrlPath == "/m3u") {
       res.setHeader('content-disposition', "inline; filename=\"interface.m3u\"");
     }
     res.statusCode = 200;

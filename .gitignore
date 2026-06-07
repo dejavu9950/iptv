@@ -13,6 +13,8 @@ interface.txt
 interfaceTXT.txt
 playback.xml
 my-playlist-config.json
+my-playlist-config.*.json
+my-playlist-profiles.json
 built-in-sources-cache.json
 built-in-sources-remote.json
 pe-cache.json

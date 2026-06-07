@@ -1626,6 +1626,25 @@
         </div>
     </div>
 
+    <!-- 新建配置档弹窗 -->
+    <div class="modal" id="createProfileModal">
+        <div class="modal-content" style="width: 440px; max-width: 90%;">
+            <h3>➕ 新建配置档</h3>
+            <p style="color: #666; font-size: 13px; margin-bottom: 16px;" id="createProfileHint">将复制当前档的设置，作为新的一档。</p>
+            <label style="display:block; font-size:13px; color:#333; margin-bottom:6px;">显示名称（如：卧室、茶室）</label>
+            <input type="text" id="newProfileName" placeholder="卧室" autocomplete="off"
+                   onkeydown="if(event.key==='Enter'){document.getElementById('newProfileId').focus();}">
+            <label style="display:block; font-size:13px; color:#333; margin-bottom:6px;">访问地址短名（选填，英文/数字）</label>
+            <input type="text" id="newProfileId" placeholder="woshi　→　/m3u?profile=woshi" autocomplete="off"
+                   onkeydown="if(event.key==='Enter'){confirmCreateProfile();}">
+            <p style="color:#8a8a8a; font-size:12px; margin: -6px 0 4px;">💡 留空会自动生成短名（中文无法转拼音）。</p>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button class="btn" onclick="closeCreateProfileModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmCreateProfile()">确定新建</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast 通知 -->
     <div class="status" id="status"></div>
     
@@ -1721,8 +1740,14 @@
                     <div class="my-playlist-info">
                         <h3>📺 我的频道 <span id="myChannelTotal" style="font-size: 14px; font-weight: normal; color: #1890ff;"></span></h3>
                         <p class="my-playlist-hint">💡 点击频道名称可查看详情，并一键用 VLC / IINA / PotPlayer 打开播放</p>
+                        <p class="my-playlist-hint" id="profileAccessHint" style="margin-top: 4px;"></p>
                     </div>
-                    <div class="my-playlist-actions">
+                    <div class="my-playlist-actions" style="flex-wrap: wrap; align-items: center;">
+                        <span style="font-size: 13px; color: #666;">配置档：</span>
+                        <select id="profileSelect" onchange="switchProfile(this.value)" title="不同电视各用一套：切换后下方编辑的就是该档" style="padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; max-width: 180px;"></select>
+                        <button class="btn" onclick="createProfilePrompt()" title="复制当前配置档为新的一档（给另一台电视用）">➕ 新建</button>
+                        <button class="btn" onclick="renameProfilePrompt()" title="重命名当前配置档">✏️ 改名</button>
+                        <button class="btn" onclick="deleteProfilePrompt()" title="删除当前配置档">🗑️ 删除</button>
                         <button class="btn btn-warning" onclick="resetMyPlaylist()">🔄 重置</button>
                     </div>
                 </div>
@@ -2078,7 +2103,9 @@
                 systemConfig = await systemRes.json();
                 console.log('系统配置加载成功');
                 
-                // 加载我的频道配置
+                // 加载配置档列表（多套 m3u），再加载当前档的我的频道配置
+                console.log('请求配置档列表...');
+                await loadProfiles();
                 console.log('请求我的频道配置...');
                 await loadMyPlaylistConfig();
                 console.log('我的频道配置加载成功');
@@ -3296,15 +3323,163 @@ if(success){
             deletedGroups: [],
             groupRenameMap: {}
         };
+        // 多套 m3u 配置档：当前编辑/查看的档 + 档列表（default 恒在首位）
+        let activeProfile = 'default';
+        let profileList = [{ id: 'default', name: '默认' }];
         let selectedGroupIndex = 0; // 当前选中的分组索引
         let isViewingDeleted = false; // 是否正在查看被删除区域
         let isBatchMode = false; // 是否处于批量管理模式
         let selectedChannels = new Set(); // 批量选中的频道ID
         let draggedChannelId = null; // 拖拽排序中被拖动的频道ID
 
+        // ---- 多套 m3u 配置档 ----
+        // 默认档不带 query（兼容旧地址）；其余档统一带 ?profile=，所有读写都按当前档走。
+        // 注意：URL 用 '/api/' + '...' 拼接，避免被后续对 API_PREFIX + '/api/my-playlist...' 的批量替换误伤。
+        function profileQuery() {
+            return (activeProfile && activeProfile !== 'default') ? ('?profile=' + encodeURIComponent(activeProfile)) : '';
+        }
+        function mpListUrl() { return API_PREFIX + '/api/' + 'my-playlist' + profileQuery(); }
+        function mpConfigUrl() { return API_PREFIX + '/api/' + 'my-playlist-config' + profileQuery(); }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function currentProfileName() {
+            const p = profileList.find(x => x.id === activeProfile);
+            return p ? p.name : activeProfile;
+        }
+        // 中文无法转拼音：尽量取已有英文/数字做短名，取不到则交给用户自己填
+        function slugify(s) {
+            return String(s).toLowerCase().replace(/[^a-z0-9_-]+/g, '');
+        }
+
+        async function loadProfiles() {
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles');
+                const result = await res.json();
+                if (result.success && Array.isArray(result.data) && result.data.length) {
+                    profileList = result.data;
+                    if (!profileList.some(p => p.id === activeProfile)) activeProfile = 'default';
+                    renderProfileSelect();
+                }
+            } catch (error) {
+                console.error('加载配置档列表失败:', error);
+            }
+        }
+
+        function renderProfileSelect() {
+            const sel = document.getElementById('profileSelect');
+            if (!sel) return;
+            sel.innerHTML = profileList.map(p =>
+                `<option value="${escapeHtml(p.id)}" ${p.id === activeProfile ? 'selected' : ''}>${escapeHtml(p.name)}${p.id === 'default' ? '' : ' (' + escapeHtml(p.id) + ')'}</option>`
+            ).join('');
+            updateProfileAccessHint();
+        }
+
+        function updateProfileAccessHint() {
+            const el = document.getElementById('profileAccessHint');
+            if (!el) return;
+            const base = window.location.origin + API_PREFIX;
+            const q = (activeProfile && activeProfile !== 'default') ? ('?profile=' + activeProfile) : '';
+            el.innerHTML = `🔗 本档地址 — M3U：<code>${base}/m3u${q}</code>　TXT：<code>${base}/txt${q}</code>`;
+        }
+
+        // 切换配置档：复用现有三栏编辑器，只重载该档的配置与频道
+        async function switchProfile(id) {
+            activeProfile = id || 'default';
+            selectedGroupIndex = 0;
+            isViewingDeleted = false;
+            await loadMyPlaylistConfig();
+            await loadMyPlaylist();
+            // 同步下拉选中项 + 顶部地址（renderProfileSelect 内部会调 updateProfileAccessHint）
+            renderProfileSelect();
+        }
+
+        // 新建档 = 复制当前档（用户选定的语义）。打开两输入框弹窗：显示名 + 选填地址短名。
+        function createProfilePrompt() {
+            const hint = document.getElementById('createProfileHint');
+            if (hint) hint.textContent = `将复制当前档「${currentProfileName()}」的隐藏/分组/排序设置，作为新的一档。`;
+            document.getElementById('newProfileName').value = '';
+            document.getElementById('newProfileId').value = '';
+            document.getElementById('createProfileModal').style.display = 'block';
+            setTimeout(() => { const el = document.getElementById('newProfileName'); if (el) el.focus(); }, 50);
+        }
+
+        function closeCreateProfileModal() {
+            document.getElementById('createProfileModal').style.display = 'none';
+        }
+
+        async function confirmCreateProfile() {
+            const displayName = document.getElementById('newProfileName').value.trim();
+            if (!displayName) { showStatus('请填写显示名称', 'error'); return; }
+            let id = document.getElementById('newProfileId').value.trim().toLowerCase();
+            if (id && !/^[a-z0-9_-]{1,64}$/.test(id)) { showStatus('地址短名只能用字母、数字、_ 或 -', 'error'); return; }
+            // 留空：自动生成短名（中文无法转拼音，用时间戳兜底）
+            if (!id) id = slugify(displayName) || ('p' + Date.now().toString(36));
+            if (!/^[a-z0-9_-]{1,64}$/.test(id)) { showStatus('地址短名只能用字母、数字、_ 或 -', 'error'); return; }
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create', id, name: displayName, from: activeProfile })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    closeCreateProfileModal();
+                    showStatus(`已新建配置档：${displayName}（地址 ?profile=${id}）`, 'success');
+                    await loadProfiles();
+                    await switchProfile(id);
+                } else {
+                    showStatus(result.message || '新建失败', 'error');
+                }
+            } catch (error) {
+                showStatus('新建失败: ' + error.message, 'error');
+            }
+        }
+
+        async function renameProfilePrompt() {
+            if (activeProfile === 'default') { showStatus('默认档不可改名', 'error'); return; }
+            const name = prompt('重命名当前配置档显示名：', currentProfileName());
+            if (name === null) return;
+            const displayName = name.trim();
+            if (!displayName) { showStatus('档名不能为空', 'error'); return; }
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'rename', id: activeProfile, name: displayName })
+                });
+                const result = await res.json();
+                if (result.success) { showStatus('已重命名', 'success'); await loadProfiles(); }
+                else showStatus(result.message || '重命名失败', 'error');
+            } catch (error) {
+                showStatus('重命名失败: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteProfilePrompt() {
+            if (activeProfile === 'default') { showStatus('默认档不可删除', 'error'); return; }
+            if (!confirm(`确定删除配置档「${currentProfileName()}」？\n该档的隐藏/分组/排序设置会一并删除（不影响其它档和底层频道）。`)) return;
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'delete', id: activeProfile })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showStatus('已删除配置档', 'success');
+                    await loadProfiles();
+                    await switchProfile('default');
+                } else showStatus(result.message || '删除失败', 'error');
+            } catch (error) {
+                showStatus('删除失败: ' + error.message, 'error');
+            }
+        }
+
         async function loadMyPlaylist(resetView = true) {
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist');
+                const response = await fetch(mpListUrl());
                 const result = await response.json();
                 console.log('我的播放列表API返回:', result);
                 
@@ -3336,7 +3511,7 @@ if(success){
 
         async function loadMyPlaylistConfig() {
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config');
+                const response = await fetch(mpConfigUrl());
                 const result = await response.json();
                 
                 if (result.success) {
@@ -3635,7 +3810,7 @@ if(success){
             
             // 自动保存配置
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -3664,7 +3839,7 @@ if(success){
             
             // 自动保存配置
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -3814,7 +3989,7 @@ if(success){
             }
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4010,7 +4185,7 @@ if(success){
             
             // 自动保存配置并重新加载数据
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4037,7 +4212,7 @@ if(success){
             
             // 自动保存配置并重新加载数据
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4080,7 +4255,7 @@ if(success){
 
             // 先保存配置到服务器
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4113,7 +4288,7 @@ if(success){
 
             // 先保存配置到服务器
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4167,7 +4342,7 @@ if(success){
 
             // 先保存配置到服务器
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4190,7 +4365,7 @@ if(success){
 
         async function saveMyPlaylist() {
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4330,7 +4505,7 @@ if(success){
             });
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4374,7 +4549,7 @@ if(success){
 
             try {
                 const n = selectedChannels.size;
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4418,7 +4593,7 @@ if(success){
             });
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4475,7 +4650,7 @@ if(success){
             });
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4718,7 +4893,7 @@ if(success){
             }
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4756,7 +4931,7 @@ if(success){
             }
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4835,7 +5010,7 @@ if(success){
             renderMyPlaylist(); // 拖拽不涉及输入焦点，直接重渲染
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
