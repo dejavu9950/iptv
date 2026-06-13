@@ -8,7 +8,7 @@ import { readConfig, parseInterfaceTxt, applyConfig, generateM3u8, generateTxt }
 // url缓存 降低请求频率
 const urlCache = {}
 
-function interfaceStr(url, headers, urlUserId, urlToken) {
+function interfaceStr(url, headers, urlUserId, urlToken, profile) {
 
   let result = {
     content: null,
@@ -26,6 +26,7 @@ function interfaceStr(url, headers, urlUserId, urlToken) {
       break;
 
     case "/m3u":
+    case "/interface.m3u":
       result.contentType = "audio/x-mpegurl; charset=utf-8"
       break;
 
@@ -44,10 +45,10 @@ function interfaceStr(url, headers, urlUserId, urlToken) {
   }
   
   // 对于播放列表，应用用户配置
-  if (url === "/" || url === "/m3u" || url === "/interface.txt" || url === "/txt") {
+  if (url === "/" || url === "/m3u" || url === "/interface.m3u" || url === "/interface.txt" || url === "/txt") {
     try {
-      const config = readConfig()
-      
+      const config = readConfig(profile)
+
       // 只有存在任意自定义配置时才应用（避免首次访问解析失败）
       // 注意：旧写法 `config.channelGroupMap` 恒真（{} 也为真），会导致始终套用配置；
       // 这里改为按内容判断，并补上 groupRenameMap / customGroups

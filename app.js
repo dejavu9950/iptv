@@ -1,5 +1,5 @@
 import http from "node:http"
-import { readFileSync } from "node:fs"
+import { readFileSync, mkdirSync } from "node:fs"
 import { createRequire } from "node:module"
 import fetch from 'node-fetch'
 import { adminPath, host, pass, port, programInfoUpdateInterval, token, userId, enableMigu, enableBuiltInSubscriptions } from "./config.js";
@@ -7,23 +7,33 @@ import { getDateTimeStr } from "./utils/time.js";
 import update from "./utils/updateData.js";
 import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
 import { channel, interfaceStr } from "./utils/appUtils.js";
+import { dataPath } from "./utils/paths.js";
 import { getChannelsAPI, getExternalSourcesAPI, saveExternalSourcesAPI,
          addExternalSourceAPI, removeExternalSourceAPI, updateExternalSourceAPI,
          setExternalSourceM3u8API, importSubscriptionAPI, getBuiltInSourcesAPI } from "./utils/adminAPI.js";
 import { getSystemConfigAPI, saveSystemConfigAPI } from "./utils/systemConfigAPI.js";
-import { readConfig, saveConfig, parseInterfaceTxt, validateGroupConfig, applyConfig } from "./utils/playlistConfig.js";
+import { readConfig, saveConfig, parseInterfaceTxt, validateGroupConfig, applyConfig,
+         listProfiles, createProfile, renameProfile, deleteProfile } from "./utils/playlistConfig.js";
 import { updateBuiltInSources, updateExternalSources, externalSourceManager } from "./utils/channelMerger.js";
 import { GITHUB_RAW_MIRRORS, isBuiltInSubscriptionSource } from "./utils/externalSources.js";
 
 // 运行时长
 var hours = 0
 
+// 本地台标文件夹：用户把 <频道名>.png 放进数据目录的 logos/，优先于 fanmingming 兜底。
+// 放 mdataDir 下随数据卷持久化；启动时建好，方便用户找到位置。
+const LOGOS_DIR = dataPath('logos')
+try { mkdirSync(LOGOS_DIR, { recursive: true }) } catch (e) { /* 已存在或无法创建，读写时再报 */ }
+
 // 读取请求体（Promise 化，避免回调式写法导致的释放/死锁问题）
+// 注意：必须先把所有 Buffer 块拼接、再整体按 UTF-8 解码。
+// 旧写法 `body += chunk` 是逐块 toString，当一个多字节汉字被拆在两个 TCP 数据块
+// 边界时，两半各自解码会变成乱码（如「咪」→「���」）——自定义分组名含中文且配置体较大时必现。
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let body = ''
-    req.on('data', chunk => { body += chunk })
-    req.on('end', () => resolve(body))
+    const chunks = []
+    req.on('data', chunk => { chunks.push(chunk) })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     req.on('error', reject)
   })
 }
@@ -35,6 +45,10 @@ const server = http.createServer(async (req, res) => {
 
   // 清理 URL，去除查询参数
   const urlPath = url.split('?')[0]
+
+  // 多套 m3u 配置档：从 query ?profile= 取档名（仅 [a-z0-9_-]，非法/缺省=默认档）。
+  // 放 query 而非路径段，避免被下方用户段正则吞成 userId/token、污染回看前缀。
+  const profileParam = (url.match(/[?&]profile=([a-zA-Z0-9_-]{1,64})/)?.[1] || '').toLowerCase()
 
   // 处理 favicon.ico 请求
   if (urlPath === '/favicon.ico') {
@@ -208,7 +222,7 @@ const server = http.createServer(async (req, res) => {
       printBlue("API: 获取我的播放列表")
       try {
         const groups = parseInterfaceTxt()
-        const config = readConfig()
+        const config = readConfig(profileParam)
         const result = applyConfig(groups, config)
         res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
         // 同时返回原始数据和应用配置后的数据
@@ -228,7 +242,7 @@ const server = http.createServer(async (req, res) => {
     if (routePath === '/api/my-playlist-config' && method === 'GET') {
       printBlue("API: 获取播放列表配置")
       try {
-        const config = readConfig()
+        const config = readConfig(profileParam)
         res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ success: true, data: config }));
       } catch (error) {
@@ -290,7 +304,13 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readBody(req)
         const config = JSON.parse(body)
-        const currentConfig = readConfig()
+        // 只允许写「默认档」或已注册的配置档，避免任意 ?profile= 制造孤儿配置文件
+        if (profileParam && profileParam !== 'default' && !listProfiles().some(p => p.id === profileParam)) {
+          res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
+          res.end(JSON.stringify({ success: false, message: '配置档不存在' }));
+          return
+        }
+        const currentConfig = readConfig(profileParam)
         const currentRenameMap = currentConfig.groupRenameMap || {}
         const nextRenameMap = config.groupRenameMap || {}
         const currentCustomGroups = currentConfig.customGroups || []
@@ -309,10 +329,42 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        const result = saveConfig(config)
+        const result = saveConfig(profileParam, config)
         res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify(result));
         printGreen("播放列表配置已保存")
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify({ success: false, message: error.message }));
+      }
+      return
+    }
+
+    // 配置档（多套 m3u）管理：列表 / 新建(可复制) / 改名 / 删除
+    if (routePath === '/api/my-playlist-profiles' && method === 'GET') {
+      printBlue("API: 获取配置档列表")
+      res.writeHead(200, { 'Content-Type': 'application/json;charset=UTF-8' });
+      res.end(JSON.stringify({ success: true, data: listProfiles() }));
+      return
+    }
+
+    if (routePath === '/api/my-playlist-profiles' && method === 'POST') {
+      try {
+        const body = await readBody(req)
+        const data = JSON.parse(body)
+        let result
+        if (data.action === 'create') {
+          result = createProfile({ id: data.id, name: data.name, fromProfile: data.from })
+        } else if (data.action === 'rename') {
+          result = renameProfile({ id: data.id, name: data.name })
+        } else if (data.action === 'delete') {
+          result = deleteProfile(data.id)
+        } else {
+          result = { success: false, message: '未知操作' }
+        }
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify(result));
+        printGreen(`配置档${data.action}操作完成`)
       } catch (error) {
         res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ success: false, message: error.message }));
@@ -331,6 +383,36 @@ const server = http.createServer(async (req, res) => {
     printRed(`身份认证失败`)
     res.writeHead(403, { 'Content-Type': 'application/json;charset=UTF-8' });
     res.end(`身份认证失败`);
+    return
+  }
+
+  // 本地台标：/logos/<文件名>（也兼容前面带 /userId/token 段的情况），从数据目录 logos/ 读取。
+  // 必须放在下方「用户段解析」之前，否则 /logos/x.png 会被当成 /userId/token 拆掉。
+  const logosIdx = routePath.indexOf('/logos/')
+  if (logosIdx !== -1) {
+    let logoName
+    try {
+      logoName = decodeURIComponent(routePath.slice(logosIdx + '/logos/'.length))
+    } catch (e) {
+      // 畸形百分号编码（如 /logos/%）会让 decodeURIComponent 抛 URIError，必须接住否则请求挂起
+      res.writeHead(400); res.end(); return
+    }
+    if (!logoName || logoName.includes('/') || logoName.includes('\\') || logoName.includes('..')) {
+      res.writeHead(400); res.end(); return
+    }
+    try {
+      const buf = readFileSync(dataPath(`logos/${logoName}`))
+      const ext = logoName.slice(logoName.lastIndexOf('.') + 1).toLowerCase()
+      const mime = ext === 'png' ? 'image/png'
+        : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+        : ext === 'webp' ? 'image/webp'
+        : ext === 'svg' ? 'image/svg+xml'
+        : 'application/octet-stream'
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' })
+      res.end(buf)
+    } catch (e) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('logo not found')
+    }
     return
   }
 
@@ -378,17 +460,21 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  const interfaceList = "/,/interface.txt,/m3u,/txt,/playback.xml"
+  // /interface.m3u 是 /m3u 的别名：内容相同，只为带 .m3u 后缀——某些客户端（如飞牛影视）按后缀校验订阅地址，/m3u 会被拒
+  const interfaceList = "/,/interface.txt,/interface.m3u,/m3u,/txt,/playback.xml"
+
+  // 去掉 query（含 ?profile=）后再做接口匹配/选盘；profile 走 profileParam 传入，回看/EPG 自动沿用同一 base
+  const routeUrlPath = routeUrl.split('?')[0]
 
   // 接口
-  if (interfaceList.indexOf(routeUrl) !== -1) {
-    const interfaceObj = interfaceStr(routeUrl, headers, urlUserId, urlToken)
+  if (interfaceList.indexOf(routeUrlPath) !== -1) {
+    const interfaceObj = interfaceStr(routeUrlPath, headers, urlUserId, urlToken, profileParam)
     if (interfaceObj.content == null) {
       interfaceObj.content = "获取失败"
     }
     // 设置响应头
     res.setHeader('Content-Type', interfaceObj.contentType);
-    if (routeUrl == "/m3u") {
+    if (routeUrlPath == "/m3u" || routeUrlPath == "/interface.m3u") {
       res.setHeader('content-disposition', "inline; filename=\"interface.m3u\"");
     }
     res.statusCode = 200;

@@ -1,10 +1,28 @@
 import { createHash } from "node:crypto"
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, unlinkSync } from "node:fs"
 import { writeJsonFileSync } from "./fileUtil.js"
 import { dataPath } from "./paths.js"
 import { printBlue, printGreen, printYellow, printRed } from "./colorOut.js"
 
-const CONFIG_PATH = dataPath('my-playlist-config.json')
+// 多套配置档（大分组）：每台电视一套个性化定制。
+// - default 档沿用原 my-playlist-config.json（零迁移、向后兼容老部署）
+// - 其余档为 my-playlist-config.<slug>.json（slug 限 [a-z0-9_-]，直接进文件名，必须白名单防路径穿越）
+// - 档清单存在 my-playlist-profiles.json（仅存非默认档的 {id,name}；default 恒存在、隐式置顶）
+// 底层 interface.txt / playback.xml / 回看 全部多档共享，多档只是「同一全集的不同视图」。
+const PROFILES_PATH = dataPath('my-playlist-profiles.json')
+const PROFILE_ID_RE = /^[a-z0-9_-]{1,64}$/
+const DEFAULT_PROFILE = { id: 'default', name: '默认' }
+
+// 归一化档名：空 / 'default' / 非法 → 默认档（杜绝任意 profile 名经文件名注入）
+function normalizeProfile(profile) {
+  if (!profile || profile === 'default' || !PROFILE_ID_RE.test(profile)) return 'default'
+  return profile
+}
+
+function configPath(profile) {
+  const p = normalizeProfile(profile)
+  return p === 'default' ? dataPath('my-playlist-config.json') : dataPath(`my-playlist-config.${p}.json`)
+}
 
 /**
  * 默认配置
@@ -17,7 +35,8 @@ const DEFAULT_CONFIG = {
   customGroups: [],         // 自定义分组 [{name, order}]
   groupOrder: [],           // 分组显示顺序
   deletedGroups: [],        // 删除的分组名列表
-  groupRenameMap: {}        // 分组重命名映射 { 原始名: 新名 }
+  groupRenameMap: {},       // 分组重命名映射 { 原始名: 新名 }
+  groupSortMode: {}         // 组内排序模式 { 显示分组名: 'name' }；'name'=按名称自动排序，缺省=手动(channelOrder)
 }
 
 function buildChannelId({ groupName, channelName, tvgName, url }) {
@@ -40,18 +59,20 @@ function buildChannelId({ groupName, channelName, tvgName, url }) {
 }
 
 /**
- * 读取配置文件
+ * 读取配置文件（profile 缺省/非法=默认档）
  */
-export function readConfig() {
+export function readConfig(profile) {
+  const filePath = configPath(profile)
   try {
-    if (!existsSync(CONFIG_PATH)) {
-      printYellow("播放列表配置文件不存在，使用默认配置")
+    if (!existsSync(filePath)) {
+      // 默认档缺失沿用旧提示；新建的空档（文件未生成）静默返回默认配置（空档=全集）
+      if (normalizeProfile(profile) === 'default') printYellow("播放列表配置文件不存在，使用默认配置")
       return { ...DEFAULT_CONFIG }
     }
-    
-    const content = readFileSync(CONFIG_PATH, 'utf-8')
+
+    const content = readFileSync(filePath, 'utf-8')
     const config = JSON.parse(content)
-    
+
     // 合并默认配置（防止配置文件缺少字段）
     return {
       ...DEFAULT_CONFIG,
@@ -64,11 +85,11 @@ export function readConfig() {
 }
 
 /**
- * 保存配置文件
+ * 保存配置文件（profile 缺省/非法=默认档）
  */
-export function saveConfig(config) {
+export function saveConfig(profile, config) {
   try {
-    writeJsonFileSync(CONFIG_PATH, config)
+    writeJsonFileSync(configPath(profile), config)
     printGreen("播放列表配置已保存")
     return { success: true }
   } catch (error) {
@@ -328,9 +349,15 @@ export function applyConfig(groups, config) {
       })
     }
 
-    // 6. 应用组内频道排序（拖拽排序）：按 显示分组名 → ["原始分组::频道ID"] 排序
+    // 6. 应用组内频道排序：groupSortMode='name' 的组按名称自动排序（中文按拼音、含数字按数值，
+    //    依赖 Node full-ICU），否则按手动拖拽顺序 channelOrder（显示分组名 → ["原始分组::频道ID"]）。
     const channelOrder = config.channelOrder || {}
+    const groupSortMode = config.groupSortMode || {}
     result.forEach(group => {
+      if (groupSortMode[group.name] === 'name') {
+        group.channels.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh', { numeric: true }))
+        return
+      }
       const order = channelOrder[group.name]
       if (Array.isArray(order) && order.length > 0) {
         group.channels.sort((a, b) => {
@@ -387,6 +414,90 @@ export function generateTxt(groups) {
   return content
 }
 
+// ---- 配置档（profile）管理 ----
+// 注册表只存非默认档的 {id, name}；default 档恒存在、隐式置顶。
+
+function readProfilesRegistry() {
+  try {
+    if (!existsSync(PROFILES_PATH)) return []
+    const data = JSON.parse(readFileSync(PROFILES_PATH, 'utf-8'))
+    const list = Array.isArray(data?.profiles) ? data.profiles : []
+    return list
+      .filter(p => p && PROFILE_ID_RE.test(p.id) && p.id !== 'default')
+      .map(p => ({ id: p.id, name: (typeof p.name === 'string' && p.name.trim()) ? p.name.trim() : p.id }))
+  } catch (error) {
+    printRed(`读取配置档列表失败: ${error.message}`)
+    return []
+  }
+}
+
+function writeProfilesRegistry(profiles) {
+  const extra = profiles
+    .filter(p => p.id !== 'default')
+    .map(p => ({ id: p.id, name: p.name }))
+  writeJsonFileSync(PROFILES_PATH, { profiles: extra })
+}
+
+/** 列出所有配置档（default 恒在首位） */
+export function listProfiles() {
+  return [DEFAULT_PROFILE, ...readProfilesRegistry()]
+}
+
+/** 新建配置档：fromProfile 指定时复制其配置（含 default），否则空配置（=全集） */
+export function createProfile({ id, name, fromProfile } = {}) {
+  if (!PROFILE_ID_RE.test(id || '')) {
+    return { success: false, message: '档名只能用小写字母、数字、_ 或 -，长度 1-64' }
+  }
+  if (id === 'default') {
+    return { success: false, message: 'default 为系统保留档名' }
+  }
+  const displayName = (typeof name === 'string' && name.trim()) ? name.trim() : id
+  if (displayName.length > 20) {
+    return { success: false, message: '档名不能超过 20 个字符' }
+  }
+  const existing = readProfilesRegistry()
+  if (existing.some(p => p.id === id)) {
+    return { success: false, message: `配置档 "${id}" 已存在` }
+  }
+  const baseConfig = (fromProfile !== undefined && fromProfile !== null && fromProfile !== '')
+    ? readConfig(fromProfile)
+    : { ...DEFAULT_CONFIG }
+  const saveRes = saveConfig(id, baseConfig)
+  if (!saveRes.success) return saveRes
+  writeProfilesRegistry([...existing, { id, name: displayName }])
+  return { success: true, profile: { id, name: displayName } }
+}
+
+/** 重命名配置档（仅改显示名，id/文件名不变） */
+export function renameProfile({ id, name } = {}) {
+  if (id === 'default') return { success: false, message: '默认档不可改名' }
+  const existing = readProfilesRegistry()
+  const idx = existing.findIndex(p => p.id === id)
+  if (idx === -1) return { success: false, message: `配置档 "${id}" 不存在` }
+  const displayName = (typeof name === 'string' && name.trim()) ? name.trim() : id
+  if (displayName.length > 20) return { success: false, message: '档名不能超过 20 个字符' }
+  existing[idx] = { id, name: displayName }
+  writeProfilesRegistry(existing)
+  return { success: true, profile: { id, name: displayName } }
+}
+
+/** 删除配置档（连同其配置文件） */
+export function deleteProfile(id) {
+  if (id === 'default') return { success: false, message: '默认档不可删除' }
+  const existing = readProfilesRegistry()
+  if (!existing.some(p => p.id === id)) {
+    return { success: false, message: `配置档 "${id}" 不存在` }
+  }
+  writeProfilesRegistry(existing.filter(p => p.id !== id))
+  try {
+    const filePath = configPath(id)
+    if (existsSync(filePath)) unlinkSync(filePath)
+  } catch (error) {
+    printYellow(`配置档已从列表移除，但删除其文件失败: ${error.message}`)
+  }
+  return { success: true }
+}
+
 // 导出 isGroupDeleted 供管理后台API使用
 export { isGroupDeleted }
 
@@ -398,5 +509,9 @@ export default {
   applyConfig,
   generateM3u8,
   generateTxt,
-  isGroupDeleted
+  isGroupDeleted,
+  listProfiles,
+  createProfile,
+  renameProfile,
+  deleteProfile
 }

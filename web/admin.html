@@ -374,6 +374,44 @@
             justify-content: flex-end;
         }
 
+        /* 配置档管理弹窗的档列表 */
+        .profile-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .profile-row.active {
+            border-color: #1890ff;
+            background: #f0f7ff;
+        }
+        .profile-row-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-shrink: 0;
+            align-items: stretch;
+            min-width: 64px;
+        }
+        .profile-url {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .profile-url code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            word-break: break-all;
+        }
+
         .status {
             position: fixed;
             top: 50%;
@@ -1594,8 +1632,8 @@
     <!-- 重置选项弹窗 -->
     <div class="modal" id="resetModal">
         <div class="modal-content" style="width: 420px; max-width: 90%;">
-            <h3>🔄 重置配置</h3>
-            <p style="color: #666; font-size: 13px; margin-bottom: 16px;">选择要重置的配置项，未选中的配置将保留不变。</p>
+            <h3 id="resetModalTitle">🔄 重置配置</h3>
+            <p style="color: #666; font-size: 13px; margin-bottom: 16px;" id="resetModalHint">选择要重置的配置项，未选中的配置将保留不变。</p>
             <div class="reset-options">
                 <label class="reset-option">
                     <input type="checkbox" id="resetRename" checked>
@@ -1622,6 +1660,43 @@
             <div class="modal-actions" style="margin-top: 20px;">
                 <button class="btn" onclick="closeResetModal()">取消</button>
                 <button class="btn btn-warning" onclick="executeReset()">确定重置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 多套配置档管理弹窗 -->
+    <div class="modal" id="profileModal">
+        <div class="modal-content" style="width: 580px; max-width: 92%;">
+            <h3>📺 多套配置档（大分组）</h3>
+            <p style="color: #666; font-size: 13px; line-height: 1.7; margin-bottom: 16px;">
+                给家里不同电视各维护<strong>一套独立的频道编排</strong>——大厅给老人、卧室给年轻人、茶室……
+                每套档单独保存隐藏 / 分组 / 排序 / 重命名，<strong>用各自的地址访问、互不影响</strong>。
+                底层频道与节目单（EPG）多档共享，新增一台电视不增加任何抓取成本。
+                <br>用法：在这里「切换」到某一档后，下方「我的频道」编辑的就是该档；把每档的地址分别填到对应电视即可。
+            </p>
+            <div id="profileListBox" style="max-height: 50vh; overflow-y: auto; margin-bottom: 16px;"></div>
+            <div class="modal-actions" style="justify-content: space-between;">
+                <button class="btn btn-primary" onclick="closeProfileModal(); createProfilePrompt();" title="复制当前档为新的一档">➕ 新建配置档</button>
+                <button class="btn btn-success" onclick="closeProfileModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建配置档弹窗 -->
+    <div class="modal" id="createProfileModal">
+        <div class="modal-content" style="width: 440px; max-width: 90%;">
+            <h3>➕ 新建配置档</h3>
+            <p style="color: #666; font-size: 13px; margin-bottom: 16px;" id="createProfileHint">将复制当前档的设置，作为新的一档。</p>
+            <label style="display:block; font-size:13px; color:#333; margin-bottom:6px;">显示名称（如：卧室、茶室）</label>
+            <input type="text" id="newProfileName" placeholder="卧室" autocomplete="off" maxlength="20"
+                   onkeydown="if(event.key==='Enter'){document.getElementById('newProfileId').focus();}">
+            <label style="display:block; font-size:13px; color:#333; margin-bottom:6px;">访问地址短名（选填，英文/数字）</label>
+            <input type="text" id="newProfileId" placeholder="woshi　→　/m3u?profile=woshi" autocomplete="off"
+                   onkeydown="if(event.key==='Enter'){confirmCreateProfile();}">
+            <p style="color:#8a8a8a; font-size:12px; margin: -6px 0 4px;">💡 留空会自动生成短名（中文无法转拼音）。</p>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button class="btn" onclick="closeCreateProfileModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmCreateProfile()">确定新建</button>
             </div>
         </div>
     </div>
@@ -1722,8 +1797,9 @@
                         <h3>📺 我的频道 <span id="myChannelTotal" style="font-size: 14px; font-weight: normal; color: #1890ff;"></span></h3>
                         <p class="my-playlist-hint">💡 点击频道名称可查看详情，并一键用 VLC / IINA / PotPlayer 打开播放</p>
                     </div>
-                    <div class="my-playlist-actions">
-                        <button class="btn btn-warning" onclick="resetMyPlaylist()">🔄 重置</button>
+                    <div class="my-playlist-actions" style="flex-wrap: wrap; align-items: center;">
+                        <span style="font-size: 14px; color: #333;">当前档：<strong id="currentProfileLabel">默认</strong></span>
+                        <button class="btn btn-primary" onclick="openProfileModal()" title="管理多套配置档：切换 / 新建 / 改名 / 删除 / 重置">✏️ 编辑</button>
                     </div>
                 </div>
                 <div class="my-playlist-container">
@@ -1855,11 +1931,12 @@
                             启用 HDR
                         </label>
                     </div>
-                    <div class="system-config-item" style="display: none;">
+                    <div class="system-config-item">
                         <label>
                             <input type="checkbox" id="sysEnableH265">
-                            启用 H.265（可能存在兼容性问题）
+                            启用 H.265 原画（可能存在兼容性问题）
                         </label>
+                        <div class="system-config-hint">💡 若部分频道<strong>只有声音、没有画面</strong>，多是播放器/设备不支持 H.265(HEVC) 编码——<strong>关闭本项</strong>即可回落到兼容性最好的 H.264。（个别频道关掉后仍只有声音，可能是 HDR/Vivid 导致，可用环境变量 <code>menableHDR=false</code> 关闭）</div>
                     </div>
                 </div>
                 <div class="content-switches">
@@ -2078,7 +2155,9 @@
                 systemConfig = await systemRes.json();
                 console.log('系统配置加载成功');
                 
-                // 加载我的频道配置
+                // 加载配置档列表（多套 m3u），再加载当前档的我的频道配置
+                console.log('请求配置档列表...');
+                await loadProfiles();
                 console.log('请求我的频道配置...');
                 await loadMyPlaylistConfig();
                 console.log('我的频道配置加载成功');
@@ -3294,17 +3373,213 @@ if(success){
             customGroups: [],
             groupOrder: [],
             deletedGroups: [],
-            groupRenameMap: {}
+            groupRenameMap: {},
+            groupSortMode: {}
         };
+        // 多套 m3u 配置档：当前编辑/查看的档 + 档列表（default 恒在首位）
+        let activeProfile = 'default';
+        let profileList = [{ id: 'default', name: '默认' }];
         let selectedGroupIndex = 0; // 当前选中的分组索引
         let isViewingDeleted = false; // 是否正在查看被删除区域
         let isBatchMode = false; // 是否处于批量管理模式
         let selectedChannels = new Set(); // 批量选中的频道ID
         let draggedChannelId = null; // 拖拽排序中被拖动的频道ID
 
+        // ---- 多套 m3u 配置档 ----
+        // 默认档不带 query（兼容旧地址）；其余档统一带 ?profile=，所有读写都按当前档走。
+        // 注意：URL 用 '/api/' + '...' 拼接，避免被后续对 API_PREFIX + '/api/my-playlist...' 的批量替换误伤。
+        function profileQuery() {
+            return (activeProfile && activeProfile !== 'default') ? ('?profile=' + encodeURIComponent(activeProfile)) : '';
+        }
+        function mpListUrl() { return API_PREFIX + '/api/' + 'my-playlist' + profileQuery(); }
+        function mpConfigUrl() { return API_PREFIX + '/api/' + 'my-playlist-config' + profileQuery(); }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function currentProfileName() {
+            const p = profileList.find(x => x.id === activeProfile);
+            return p ? p.name : activeProfile;
+        }
+        // 中文无法转拼音：尽量取已有英文/数字做短名，取不到则交给用户自己填
+        function slugify(s) {
+            return String(s).toLowerCase().replace(/[^a-z0-9_-]+/g, '');
+        }
+
+        async function loadProfiles() {
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles');
+                const result = await res.json();
+                if (result.success && Array.isArray(result.data) && result.data.length) {
+                    profileList = result.data;
+                    // 恢复上次选择的档（记在本浏览器），刷新后不再跳回默认；不存在则回默认
+                    let saved = null;
+                    try { saved = localStorage.getItem('iptv_active_profile'); } catch (e) {}
+                    if (saved && profileList.some(p => p.id === saved)) {
+                        activeProfile = saved;
+                    } else if (!profileList.some(p => p.id === activeProfile)) {
+                        activeProfile = 'default';
+                    }
+                    renderProfileUI();
+                }
+            } catch (error) {
+                console.error('加载配置档列表失败:', error);
+            }
+        }
+
+        // 顶部主按钮显示当前档名；弹窗打开时同步刷新档列表
+        function renderProfileUI() {
+            const label = document.getElementById('currentProfileLabel');
+            if (label) label.textContent = currentProfileName();
+            const modal = document.getElementById('profileModal');
+            if (modal && modal.style.display === 'block') renderProfileList();
+        }
+
+        function openProfileModal() {
+            renderProfileList();
+            document.getElementById('profileModal').style.display = 'block';
+        }
+        function closeProfileModal() {
+            document.getElementById('profileModal').style.display = 'none';
+        }
+
+        // 渲染弹窗里的档列表：每档 名称 + 访问地址(可复制) + 切换/改名/删除
+        function renderProfileList() {
+            const box = document.getElementById('profileListBox');
+            if (!box) return;
+            const base = window.location.origin + API_PREFIX;
+            box.innerHTML = profileList.map(p => {
+                const isActive = p.id === activeProfile;
+                const isDefault = p.id === 'default';
+                const url = base + '/m3u' + (isDefault ? '' : '?profile=' + p.id);
+                const slugHtml = isDefault ? '' : ` <span style="color:#999;font-weight:normal;font-size:12px;">(${escapeHtml(p.id)})</span>`;
+                // 改名按钮紧跟档名右侧（默认档不可改名）
+                const renameBtn = isDefault ? '' :
+                    ` <button class="btn btn-sm" onclick="renameProfilePrompt('${p.id}')" title="重命名该档" style="padding:2px 8px; font-size:12px;">改名</button>`;
+                // 右侧竖排：当前档=重置，其它档=切换；非默认档另有删除
+                const left = isActive
+                    ? '<button class="btn btn-sm btn-warning" onclick="closeProfileModal(); resetMyPlaylist();" title="重置本档：重命名 / 隐藏 / 排序">🔄 重置</button>'
+                    : `<button class="btn btn-sm btn-primary" onclick="switchProfile('${p.id}')">切换</button>`;
+                const del = isDefault ? '' :
+                    `<button class="btn btn-sm btn-danger" onclick="deleteProfilePrompt('${p.id}')">删除</button>`;
+                return `<div class="profile-row${isActive ? ' active' : ''}">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:6px;">${escapeHtml(p.name)}${slugHtml}${renameBtn}</div>
+                        <div class="profile-url"><code>${escapeHtml(url)}</code><button class="btn btn-sm" onclick="copyToClipboard('${url}', '播放地址')">复制</button></div>
+                    </div>
+                    <div class="profile-row-actions">${left}${del}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // 切换配置档：复用现有三栏编辑器，只重载该档的配置与频道
+        async function switchProfile(id) {
+            activeProfile = id || 'default';
+            try { localStorage.setItem('iptv_active_profile', activeProfile); } catch (e) {}
+            selectedGroupIndex = 0;
+            isViewingDeleted = false;
+            await loadMyPlaylistConfig();
+            await loadMyPlaylist();
+            // 同步顶部主按钮档名 + 弹窗列表高亮（弹窗若开着）
+            renderProfileUI();
+        }
+
+        // 新建档 = 复制当前档（用户选定的语义）。打开两输入框弹窗：显示名 + 选填地址短名。
+        function createProfilePrompt() {
+            const hint = document.getElementById('createProfileHint');
+            if (hint) hint.textContent = `将复制当前档「${currentProfileName()}」的隐藏/分组/排序设置，作为新的一档。`;
+            document.getElementById('newProfileName').value = '';
+            document.getElementById('newProfileId').value = '';
+            document.getElementById('createProfileModal').style.display = 'block';
+            setTimeout(() => { const el = document.getElementById('newProfileName'); if (el) el.focus(); }, 50);
+        }
+
+        function closeCreateProfileModal() {
+            document.getElementById('createProfileModal').style.display = 'none';
+        }
+
+        async function confirmCreateProfile() {
+            const displayName = document.getElementById('newProfileName').value.trim();
+            if (!displayName) { showStatus('请填写显示名称', 'error'); return; }
+            if (displayName.length > 20) { showStatus('档名请控制在 20 个字符以内', 'error'); return; }
+            let id = document.getElementById('newProfileId').value.trim().toLowerCase();
+            if (id && !/^[a-z0-9_-]{1,64}$/.test(id)) { showStatus('地址短名只能用字母、数字、_ 或 -', 'error'); return; }
+            // 留空：自动生成短名（中文无法转拼音，用时间戳兜底）
+            if (!id) id = slugify(displayName) || ('p' + Date.now().toString(36));
+            if (!/^[a-z0-9_-]{1,64}$/.test(id)) { showStatus('地址短名只能用字母、数字、_ 或 -', 'error'); return; }
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create', id, name: displayName, from: activeProfile })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    closeCreateProfileModal();
+                    showStatus(`已新建配置档：${displayName}（地址 ?profile=${id}）`, 'success');
+                    await loadProfiles();
+                    await switchProfile(id);
+                } else {
+                    showStatus(result.message || '新建失败', 'error');
+                }
+            } catch (error) {
+                showStatus('新建失败: ' + error.message, 'error');
+            }
+        }
+
+        async function renameProfilePrompt(id) {
+            id = id || activeProfile;
+            if (id === 'default') { showStatus('默认档不可改名', 'error'); return; }
+            const cur = (profileList.find(p => p.id === id) || {}).name || id;
+            const name = prompt('重命名配置档显示名：', cur);
+            if (name === null) return;
+            const displayName = name.trim();
+            if (!displayName) { showStatus('档名不能为空', 'error'); return; }
+            if (displayName.length > 20) { showStatus('档名请控制在 20 个字符以内', 'error'); return; }
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'rename', id, name: displayName })
+                });
+                const result = await res.json();
+                if (result.success) { showStatus('已重命名', 'success'); await loadProfiles(); }
+                else showStatus(result.message || '重命名失败', 'error');
+            } catch (error) {
+                showStatus('重命名失败: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteProfilePrompt(id) {
+            id = id || activeProfile;
+            if (id === 'default') { showStatus('默认档不可删除', 'error'); return; }
+            const nm = (profileList.find(p => p.id === id) || {}).name || id;
+            if (!confirm(`确定删除配置档「${nm}」？\n该档的隐藏/分组/排序设置会一并删除（不影响其它档和底层频道）。`)) return;
+            try {
+                const res = await fetch(API_PREFIX + '/api/' + 'my-playlist-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'delete', id })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showStatus('已删除配置档', 'success');
+                    // 删的是当前档 → 切回默认；删的是其它档 → 只刷新列表，当前编辑不变
+                    if (id === activeProfile) {
+                        await loadProfiles();
+                        await switchProfile('default');
+                    } else {
+                        await loadProfiles();
+                    }
+                } else showStatus(result.message || '删除失败', 'error');
+            } catch (error) {
+                showStatus('删除失败: ' + error.message, 'error');
+            }
+        }
+
         async function loadMyPlaylist(resetView = true) {
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist');
+                const response = await fetch(mpListUrl());
                 const result = await response.json();
                 console.log('我的播放列表API返回:', result);
                 
@@ -3336,7 +3611,7 @@ if(success){
 
         async function loadMyPlaylistConfig() {
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config');
+                const response = await fetch(mpConfigUrl());
                 const result = await response.json();
                 
                 if (result.success) {
@@ -3509,7 +3784,7 @@ if(success){
                 
                 // 根据批量模式显示不同的操作按钮
                 if (isBatchMode && group.isPartialDelete) {
-                    // 批量模式，仅对包含隐藏频道的分组显示
+                    // 部分隐藏分组 · 批量：恢复选中
                     const selectedCount = selectedChannels.size;
                     actions.innerHTML = `
                         <button class="btn btn-sm" onclick="selectAllChannels()">全选</button>
@@ -3517,15 +3792,33 @@ if(success){
                         <button class="btn btn-success btn-sm" onclick="restoreSelectedChannels()" ${selectedCount === 0 ? 'disabled' : ''}>恢复选中 (${selectedCount})</button>
                         <button class="btn btn-primary btn-sm" onclick="toggleBatchMode()">退出批量</button>
                     `;
+                } else if (isBatchMode) {
+                    // 完整隐藏分组 · 批量：把选中频道移到可见分组（从隐藏组里捞出来，无需先恢复整组）
+                    const selectedCount = selectedChannels.size;
+                    const moveOpts = myPlaylistData.map(g => {
+                        const v = String(g.name).replace(/"/g, '&quot;');
+                        return `<option value="${v}">${g.name}</option>`;
+                    }).join('');
+                    actions.innerHTML = `
+                        <button class="btn btn-sm" onclick="selectAllChannels()">全选</button>
+                        <button class="btn btn-sm" onclick="deselectAllChannels()">取消全选</button>
+                        <span style="margin-left: 6px; color: #555; font-size: 13px;">移动选中到</span>
+                        <select id="hiddenMoveSelect" style="padding: 3px 6px; border-radius: 4px; border: 1px solid #ddd; max-width: 160px;" ${selectedCount === 0 ? 'disabled' : ''}>${moveOpts}</select>
+                        <button class="btn btn-success btn-sm" onclick="moveSelectedFromHidden()" ${selectedCount === 0 ? 'disabled' : ''}>移动 (${selectedCount})</button>
+                        <button class="btn btn-primary btn-sm" onclick="toggleBatchMode()">退出批量</button>
+                    `;
                 } else if (group.isPartialDelete) {
-                    // 非批量模式，包含隐藏频道的分组
+                    // 部分隐藏分组 · 非批量
                     actions.innerHTML = `
                         <button class="btn btn-primary btn-sm" onclick="restoreAllChannelsInGroup()">恢复所有频道</button>
                         <button class="btn btn-primary btn-sm" onclick="toggleBatchMode()">批量管理</button>
                     `;
                 } else {
-                    // 被隐藏的完整分组
-                    actions.innerHTML = '<button class="btn btn-primary btn-sm" onclick="restoreGroup()">恢复分组</button>';
+                    // 完整隐藏分组 · 非批量：恢复整组，或进批量把个别频道移出去（不必先恢复整组）
+                    actions.innerHTML = `
+                        <button class="btn btn-primary btn-sm" onclick="restoreGroup()">恢复分组</button>
+                        <button class="btn btn-primary btn-sm" onclick="toggleBatchMode()">批量移动频道</button>
+                    `;
                 }
 
                 // 对于被隐藏的完整分组，不显示单个频道的恢复按钮
@@ -3534,9 +3827,9 @@ if(success){
                     <div class="my-playlist-channels">
                         ${group.channels.map(channel => `
                             <div class="my-playlist-channel deleted ${isBatchMode ? 'batch-mode' : ''}" data-channel-id="${channel.id}">
-                                ${isBatchMode && group.isPartialDelete ? `
-                                    <input type="checkbox" class="my-playlist-channel-checkbox" 
-                                           onchange="toggleChannelSelection('${channel.id}')" 
+                                ${isBatchMode ? `
+                                    <input type="checkbox" class="my-playlist-channel-checkbox"
+                                           onchange="toggleChannelSelection('${channel.id}')"
                                            ${selectedChannels.has(channel.id) ? 'checked' : ''}>
                                 ` : ''}
                                 <div class="my-playlist-channel-name" title="点击查看详情：${channel.name}" onclick="showChannelDetail('${channel.id}', true)" style="cursor: pointer;">
@@ -3565,7 +3858,8 @@ if(success){
                 title.textContent = `${group.name} (${group.channels.length}个频道)`;
                 const isUngrouped = group.name === '未分组';
                 const isCustomGroup = isCustomGroupName(group.name);
-                
+                const isNameSorted = !!(myPlaylistConfig.groupSortMode && myPlaylistConfig.groupSortMode[group.name] === 'name');
+
                 // 根据批量模式显示不同的操作按钮
                 if (isBatchMode) {
                     const selectedCount = selectedChannels.size;
@@ -3589,6 +3883,7 @@ if(success){
                         <button class="btn btn-sm" onclick="renameGroup(${groupIndex})" ${isUngrouped ? 'disabled' : ''}>重命名</button>
                         <button class="btn btn-sm" onclick="moveGroupUp(${groupIndex})" ${isUngrouped || groupIndex === 0 ? 'disabled' : ''}>↑ 上移</button>
                         <button class="btn btn-sm" onclick="moveGroupDown(${groupIndex})" ${isUngrouped || groupIndex === myPlaylistData.length - 1 ? 'disabled' : ''}>↓ 下移</button>
+                        <button class="btn btn-sm" onclick="toggleGroupSort()" title="点击切换：手动拖拽 ⇄ 按名称自动排序（中文按拼音、含数字按数值）">📑 排序：${isNameSorted ? '名称' : '手动'}</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteGroup(${groupIndex})" ${isUngrouped || isCustomGroup ? 'disabled' : ''}>隐藏分组</button>
                         <button class="btn btn-primary btn-sm" onclick="toggleBatchMode()">批量管理</button>
                     `;
@@ -3601,12 +3896,12 @@ if(success){
                         <div class="my-playlist-channels">
                             ${group.channels.map(channel => `
                                 <div class="my-playlist-channel ${isBatchMode ? 'batch-mode' : ''}" data-channel-id="${channel.id}"
-                                     ${!isBatchMode ? `draggable="true" ondragstart="onChannelDragStart(event, '${channel.id}')" ondragend="onChannelDragEnd(event)" ondragover="onChannelDragOver(event)" ondrop="onChannelDrop(event, '${channel.id}')"` : ''}>
+                                     ${!isBatchMode && !isNameSorted ? `draggable="true" ondragstart="onChannelDragStart(event, '${channel.id}')" ondragend="onChannelDragEnd(event)" ondragover="onChannelDragOver(event)" ondrop="onChannelDrop(event, '${channel.id}')"` : ''}>
                                     ${isBatchMode ? `
                                         <input type="checkbox" class="my-playlist-channel-checkbox"
                                                onchange="toggleChannelSelection('${channel.id}')"
                                                ${selectedChannels.has(channel.id) ? 'checked' : ''}>
-                                    ` : `<span class="channel-drag-handle" aria-hidden="true" title="拖拽排序">⠿</span>`}
+                                    ` : (isNameSorted ? `<span class="channel-drag-handle" aria-hidden="true"></span>` : `<span class="channel-drag-handle" aria-hidden="true" title="拖拽排序">⠿</span>`)}
                                     <div class="my-playlist-channel-name" title="点击查看详情：${channel.name}" onclick="showChannelDetail('${channel.id}', false)" style="cursor: pointer;">
                                         <span class="channel-detail-hint" aria-hidden="true">ⓘ</span>${channel.name}
                                     </div>
@@ -3635,7 +3930,7 @@ if(success){
             
             // 自动保存配置
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -3664,7 +3959,7 @@ if(success){
             
             // 自动保存配置
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -3814,7 +4109,7 @@ if(success){
             }
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -3895,6 +4190,18 @@ if(success){
                 const idx = myPlaylistConfig.groupOrder.indexOf(currentName);
                 if (idx !== -1) {
                     myPlaylistConfig.groupOrder[idx] = trimmed;
+                }
+            }
+
+            // 同步「组内排序方式 groupSortMode」「组内频道顺序 channelOrder」中以显示名为 key 的项，改名后不丢
+            if (trimmed !== currentName) {
+                if (myPlaylistConfig.groupSortMode && currentName in myPlaylistConfig.groupSortMode) {
+                    myPlaylistConfig.groupSortMode[trimmed] = myPlaylistConfig.groupSortMode[currentName];
+                    delete myPlaylistConfig.groupSortMode[currentName];
+                }
+                if (myPlaylistConfig.channelOrder && currentName in myPlaylistConfig.channelOrder) {
+                    myPlaylistConfig.channelOrder[trimmed] = myPlaylistConfig.channelOrder[currentName];
+                    delete myPlaylistConfig.channelOrder[currentName];
                 }
             }
 
@@ -4010,7 +4317,7 @@ if(success){
             
             // 自动保存配置并重新加载数据
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4037,7 +4344,7 @@ if(success){
             
             // 自动保存配置并重新加载数据
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4080,7 +4387,7 @@ if(success){
 
             // 先保存配置到服务器
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4113,7 +4420,7 @@ if(success){
 
             // 先保存配置到服务器
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4167,7 +4474,7 @@ if(success){
 
             // 先保存配置到服务器
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4176,7 +4483,7 @@ if(success){
                 if (result.success) {
                     // 重新加载数据但保持当前视图
                     await loadMyPlaylist(false);
-                    showStatus(`已恢复 ${channelIds.length} 个频道`, 'success');
+                    showStatus(`已恢复 ${hiddenKeys.length} 个频道`, 'success');
                 } else {
                     showStatus('恢复失败', 'error');
                 }
@@ -4190,7 +4497,7 @@ if(success){
 
         async function saveMyPlaylist() {
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4212,7 +4519,28 @@ if(success){
             }
         }
 
+        // 切换当前分组的「组内排序方式」：按名称自动 ↔ 手动拖拽
+        async function toggleGroupSort() {
+            if (isViewingDeleted || myPlaylistData.length === 0 || selectedGroupIndex >= myPlaylistData.length) return;
+            const group = myPlaylistData[selectedGroupIndex];
+            if (!myPlaylistConfig.groupSortMode) myPlaylistConfig.groupSortMode = {};
+            if (myPlaylistConfig.groupSortMode[group.name] === 'name') {
+                delete myPlaylistConfig.groupSortMode[group.name];   // 改回手动
+            } else {
+                myPlaylistConfig.groupSortMode[group.name] = 'name'; // 按名称自动排序
+                // 切到自动排序时清掉该组残留的手动顺序，避免歧义
+                if (myPlaylistConfig.channelOrder) delete myPlaylistConfig.channelOrder[group.name];
+            }
+            await saveMyPlaylist();
+            await loadMyPlaylist(false);
+        }
+
         function resetMyPlaylist() {
+            // 标题/说明带上当前档名，明确「只重置当前档」
+            const t = document.getElementById('resetModalTitle');
+            if (t) t.textContent = `🔄 重置「${currentProfileName()}」配置`;
+            const h = document.getElementById('resetModalHint');
+            if (h) h.textContent = '选择要重置的配置项，未选中的保留不变。仅重置当前档，其它档不受影响。';
             document.getElementById('resetRename').checked = true;
             document.getElementById('resetHidden').checked = true;
             document.getElementById('resetOrder').checked = true;
@@ -4330,7 +4658,7 @@ if(success){
             });
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4374,7 +4702,7 @@ if(success){
 
             try {
                 const n = selectedChannels.size;
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4418,7 +4746,7 @@ if(success){
             });
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4475,7 +4803,7 @@ if(success){
             });
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4492,6 +4820,50 @@ if(success){
             } catch (error) {
                 console.error('恢复频道失败:', error);
                 showStatus('恢复失败: ' + error.message, 'error');
+            }
+        }
+
+        // 把「完整隐藏分组」里选中的频道移到某个可见分组（channelGroupMap 的 movedTo 会让其脱离隐藏组、出现在目标组）
+        // 无需先恢复整组——选 1 个=单独移、选多个=批量移
+        async function moveSelectedFromHidden() {
+            if (selectedChannels.size === 0 || !isViewingDeleted) return;
+            const sel = document.getElementById('hiddenMoveSelect');
+            if (!sel || !sel.value) return;
+            const target = sel.value;
+            // 定位当前查看的隐藏分组（与 restoreSelectedChannels 同逻辑）
+            const isGroupDeletedCheck = (groupName) => myPlaylistConfig.deletedGroups.some(p =>
+                p.endsWith('*') ? groupName.startsWith(p.slice(0, -1)) : p === groupName);
+            const deletedGroupsList = myPlaylistOriginalData.filter(g => isGroupDeletedCheck(g.name));
+            const hiddenGroupsList = myPlaylistOriginalData.map(g => {
+                const hc = g.channels.filter(ch =>
+                    myPlaylistConfig.hiddenChannels.includes(`${g.name}::${ch.id}`) && !isGroupDeletedCheck(g.name));
+                return hc.length > 0 ? { ...g, channels: hc, isPartialDelete: true } : null;
+            }).filter(Boolean);
+            const currentGroup = [...deletedGroupsList, ...hiddenGroupsList][selectedGroupIndex];
+            if (!currentGroup) return;
+
+            if (!myPlaylistConfig.channelGroupMap) myPlaylistConfig.channelGroupMap = {};
+            const n = selectedChannels.size;
+            selectedChannels.forEach(channelId => {
+                myPlaylistConfig.channelGroupMap[`${currentGroup.name}::${channelId}`] = target;
+            });
+            try {
+                const response = await fetch(mpConfigUrl(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(myPlaylistConfig)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    selectedChannels.clear();
+                    isBatchMode = false;
+                    await loadMyPlaylist(false);
+                    showStatus(`已移动 ${n} 个频道到「${target}」`, 'success');
+                } else {
+                    showStatus('移动失败', 'error');
+                }
+            } catch (error) {
+                showStatus('移动失败: ' + error.message, 'error');
             }
         }
 
@@ -4718,7 +5090,7 @@ if(success){
             }
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4756,7 +5128,7 @@ if(success){
             }
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
@@ -4835,7 +5207,7 @@ if(success){
             renderMyPlaylist(); // 拖拽不涉及输入焦点，直接重渲染
 
             try {
-                const response = await fetch(API_PREFIX + '/api/my-playlist-config', {
+                const response = await fetch(mpConfigUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(myPlaylistConfig)
