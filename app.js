@@ -304,6 +304,12 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await readBody(req)
         const config = JSON.parse(body)
+        // 只允许写「默认档」或已注册的配置档，避免任意 ?profile= 制造孤儿配置文件
+        if (profileParam && profileParam !== 'default' && !listProfiles().some(p => p.id === profileParam)) {
+          res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
+          res.end(JSON.stringify({ success: false, message: '配置档不存在' }));
+          return
+        }
         const currentConfig = readConfig(profileParam)
         const currentRenameMap = currentConfig.groupRenameMap || {}
         const nextRenameMap = config.groupRenameMap || {}
@@ -384,7 +390,13 @@ const server = http.createServer(async (req, res) => {
   // 必须放在下方「用户段解析」之前，否则 /logos/x.png 会被当成 /userId/token 拆掉。
   const logosIdx = routePath.indexOf('/logos/')
   if (logosIdx !== -1) {
-    const logoName = decodeURIComponent(routePath.slice(logosIdx + '/logos/'.length))
+    let logoName
+    try {
+      logoName = decodeURIComponent(routePath.slice(logosIdx + '/logos/'.length))
+    } catch (e) {
+      // 畸形百分号编码（如 /logos/%）会让 decodeURIComponent 抛 URIError，必须接住否则请求挂起
+      res.writeHead(400); res.end(); return
+    }
     if (!logoName || logoName.includes('/') || logoName.includes('\\') || logoName.includes('..')) {
       res.writeHead(400); res.end(); return
     }

@@ -4193,6 +4193,18 @@ if(success){
                 }
             }
 
+            // 同步「组内排序方式 groupSortMode」「组内频道顺序 channelOrder」中以显示名为 key 的项，改名后不丢
+            if (trimmed !== currentName) {
+                if (myPlaylistConfig.groupSortMode && currentName in myPlaylistConfig.groupSortMode) {
+                    myPlaylistConfig.groupSortMode[trimmed] = myPlaylistConfig.groupSortMode[currentName];
+                    delete myPlaylistConfig.groupSortMode[currentName];
+                }
+                if (myPlaylistConfig.channelOrder && currentName in myPlaylistConfig.channelOrder) {
+                    myPlaylistConfig.channelOrder[trimmed] = myPlaylistConfig.channelOrder[currentName];
+                    delete myPlaylistConfig.channelOrder[currentName];
+                }
+            }
+
             try {
                 if (isCustomGroup) {
                     await remapManualGroupInExternalSources(currentName, trimmed);
