@@ -50,4 +50,23 @@ check('原分组 A 被搬空后，仍能用 A::x1 正确隐藏 X', () => {
   assert.equal(shows(cfg, 'X'), false)
 })
 
-console.log(`\n全部通过：${passed}/4 ✅`)
+// 批量移动同类不变量：再次移动「已移动过」的频道，必须改写原始分组那条键 A::x1
+const inGroup = (cfg, ch, grp) => applyConfig(groups(), cfg).find(g => g.name === grp)?.channels.some(c => c.name === ch)
+
+check('再次移动 B→C：改写 A::x1=C → X 落在 C', () => {
+  const cfg = base(); cfg.customGroups = [{ name: 'B' }, { name: 'C2' }]; cfg.channelGroupMap = { 'A::x1': 'C2' }
+  assert.equal(inGroup(cfg, 'X', 'C2'), true)
+})
+
+check('旧 bug 形态（孤儿键 B::x1=C2）→ X 仍卡在 B（前端不可这样写）', () => {
+  const cfg = base(); cfg.customGroups = [{ name: 'B' }, { name: 'C2' }]; cfg.channelGroupMap = { 'A::x1': 'B', 'B::x1': 'C2' }
+  assert.equal(inGroup(cfg, 'X', 'B'), true)
+  assert.equal(inGroup(cfg, 'X', 'C2'), false)
+})
+
+check('移回原组：删除 A::x1 → X 回到 A', () => {
+  const cfg = base() // 无 channelGroupMap = 已删除归类
+  assert.equal(inGroup(cfg, 'X', 'A'), true)
+})
+
+console.log(`\n全部通过：${passed}/7 ✅`)
