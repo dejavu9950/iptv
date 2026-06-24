@@ -1553,6 +1553,19 @@
             border-color: #1890ff;
         }
 
+        /* 刚编辑过的频道临时高亮（issue #50）：黄色描边 + 一次性脉冲，约 4s 后由 JS 移除。
+           background/border-color 须 !important，否则 :hover 的浅蓝背景会盖掉高亮。 */
+        .my-playlist-channel.recently-edited {
+            background: #fff7e6 !important;
+            border-color: #ffb800 !important;
+            box-shadow: 0 0 0 2px rgba(255, 184, 0, 0.35);
+            animation: editPulse 1.2s ease-out;
+        }
+        @keyframes editPulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.65); }
+            100% { box-shadow: 0 0 0 2px rgba(255, 184, 0, 0.35); }
+        }
+
         .my-playlist-channel-name {
             flex: 1;
             overflow: hidden;
@@ -3448,6 +3461,8 @@ if(success){
         let isBatchMode = false; // 是否处于批量管理模式
         let selectedChannels = new Set(); // 批量选中的频道ID
         let draggedChannelId = null; // 拖拽排序中被拖动的频道ID
+        let lastEditedChannelId = null; // 最近编辑过的频道ID（重命名/移动后），用于重渲染后临时高亮定位 (issue #50)
+        let editHighlightTimer = null;  // 临时高亮自动消退的定时器句柄
 
         // ---- 多套 m3u 配置档 ----
         // 默认档不带 query（兼容旧地址）；其余档统一带 ?profile=，所有读写都按当前档走。
@@ -3544,6 +3559,7 @@ if(success){
             try { localStorage.setItem('iptv_active_profile', activeProfile); } catch (e) {}
             selectedGroupIndex = 0;
             isViewingDeleted = false;
+            lastEditedChannelId = null; // 切档清除编辑高亮，避免跨档误高亮同 id 频道 (issue #50)
             await loadMyPlaylistConfig();
             await loadMyPlaylist();
             // 同步顶部主按钮档名 + 弹窗列表高亮（弹窗若开着）
@@ -3892,7 +3908,7 @@ if(success){
                 container.innerHTML = `
                     <div class="my-playlist-channels">
                         ${group.channels.map(channel => `
-                            <div class="my-playlist-channel deleted ${isBatchMode ? 'batch-mode' : ''}" data-channel-id="${channel.id}">
+                            <div class="my-playlist-channel deleted ${isBatchMode ? 'batch-mode' : ''} ${channel.id === lastEditedChannelId ? 'recently-edited' : ''}" data-channel-id="${channel.id}">
                                 ${isBatchMode ? `
                                     <input type="checkbox" class="my-playlist-channel-checkbox"
                                            onchange="toggleChannelSelection('${channel.id}')"
@@ -3961,7 +3977,7 @@ if(success){
                     ` : `
                         <div class="my-playlist-channels">
                             ${group.channels.map(channel => `
-                                <div class="my-playlist-channel ${isBatchMode ? 'batch-mode' : ''}" data-channel-id="${channel.id}"
+                                <div class="my-playlist-channel ${isBatchMode ? 'batch-mode' : ''} ${channel.id === lastEditedChannelId ? 'recently-edited' : ''}" data-channel-id="${channel.id}"
                                      ${!isBatchMode && !isNameSorted ? `draggable="true" ondragstart="onChannelDragStart(event, '${channel.id}')" ondragend="onChannelDragEnd(event)" ondragover="onChannelDragOver(event)" ondrop="onChannelDrop(event, '${channel.id}')"` : ''}>
                                     ${isBatchMode ? `
                                         <input type="checkbox" class="my-playlist-channel-checkbox"
@@ -3981,6 +3997,24 @@ if(success){
                         </div>
                     `}
                 `;
+            }
+
+            // 刚编辑过的频道：重渲染后滚动定位 + 启动临时高亮自动消退（issue #50）。
+            // 只在该频道确实渲染进了当前可见集合时才定位/计时；否则保留 lastEditedChannelId，
+            // 等用户切到包含它的分组时再命中高亮。
+            if (lastEditedChannelId) {
+                const el = container.querySelector(`[data-channel-id="${lastEditedChannelId}"]`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (editHighlightTimer) clearTimeout(editHighlightTimer);
+                    const targetId = lastEditedChannelId;
+                    editHighlightTimer = setTimeout(() => {
+                        document.querySelectorAll('.my-playlist-channel.recently-edited')
+                            .forEach(n => n.classList.remove('recently-edited'));
+                        if (lastEditedChannelId === targetId) lastEditedChannelId = null;
+                        editHighlightTimer = null;
+                    }, 4000);
+                }
             }
         }
 
@@ -5270,8 +5304,12 @@ if(success){
                 });
                 const result = await response.json();
                 if (result.success) {
+                    lastEditedChannelId = id; // 记录被编辑频道 (issue #50)，须在 closeChannelDetail 前取值
                     closeChannelDetail();
                     await loadMyPlaylist(false);
+                    // 移动后频道归到目标分组，而 loadMyPlaylist(false) 不会切组，需主动切到目标分组否则高亮不在可见集 (issue #50)
+                    const ti = myPlaylistData.findIndex(g => g.name === target);
+                    if (ti !== -1) { isViewingDeleted = false; selectedGroupIndex = ti; renderMyPlaylist(); }
                     showStatus(`已移动到「${target}」`, 'success');
                 } else {
                     showStatus('移动失败: ' + (result.message || ''), 'error');
@@ -5308,6 +5346,7 @@ if(success){
                 });
                 const result = await response.json();
                 if (result.success) {
+                    lastEditedChannelId = id; // 记录被编辑频道，重渲染后高亮定位 (issue #50)。须在 closeChannelDetail 清空 currentChannelDetail 前取值
                     closeChannelDetail();
                     await loadMyPlaylist(false);
                     showStatus(newName && newName !== originalName ? `已重命名为「${newName}」` : '已恢复原名', 'success');
