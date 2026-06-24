@@ -12,6 +12,8 @@ import { getChannelsAPI, getExternalSourcesAPI, saveExternalSourcesAPI,
          addExternalSourceAPI, removeExternalSourceAPI, updateExternalSourceAPI,
          setExternalSourceM3u8API, importSubscriptionAPI, parseLocalContentAPI,
          uploadLogoAPI, removeLogoAPI, copyChannelToGroupsAPI, getBuiltInSourcesAPI } from "./utils/adminAPI.js";
+import { getEpgSourcesAPI, setEpgEnabledAPI, addEpgSourceAPI, updateEpgSourceAPI,
+         removeEpgSourceAPI, expireEpgSourcesAPI } from "./utils/epgSourcesAPI.js";
 import { getSystemConfigAPI, saveSystemConfigAPI } from "./utils/systemConfigAPI.js";
 import { readConfig, saveConfig, parseInterfaceTxt, validateGroupConfig, applyConfig,
          listProfiles, createProfile, renameProfile, deleteProfile } from "./utils/playlistConfig.js";
@@ -213,6 +215,44 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify(result));
         printGreen(`外部源${data.action}操作完成`)
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify({ success: false, message: error.message }));
+      }
+      return
+    }
+
+    // EPG 节目单源管理 API（issue #38）
+    if (routePath === '/api/epg-sources' && method === 'GET') {
+      printBlue("API: 获取 EPG 源配置")
+      const result = getEpgSourcesAPI()
+      res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
+      res.end(JSON.stringify(result));
+      return
+    }
+
+    if (routePath === '/api/epg-sources' && method === 'POST') {
+      try {
+        const data = JSON.parse(await readBody(req))
+        let result
+        switch (data.action) {
+          case 'setEnabled': result = setEpgEnabledAPI(data.enabled); break
+          case 'add': result = addEpgSourceAPI(data.source); break
+          case 'update': result = updateEpgSourceAPI(data.index, data.fields || {}); break
+          case 'remove': result = removeEpgSourceAPI(data.index); break
+          case 'refresh':
+            // 清空各源的 lastUpdated 强制重新下载，并后台触发一次完整更新以重建合并后的 playback.xml
+            result = expireEpgSourcesAPI()
+            if (result.success) {
+              update(hours).catch(err => printRed(`EPG 手动刷新触发的更新失败: ${err?.message || err}`))
+              result.message = '已触发后台刷新，节目单将在本次更新完成后生效（视源大小约数十秒~数分钟）'
+            }
+            break
+          default: result = { success: false, message: '未知操作' }
+        }
+        res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify(result));
+        printGreen(`EPG 源 ${data.action} 操作完成`)
       } catch (error) {
         res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ success: false, message: error.message }));

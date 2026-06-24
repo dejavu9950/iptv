@@ -1986,8 +1986,49 @@
                 <div style="margin-top: 12px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 13px; color: #666; text-align: center;">
                     💡 提示：保存配置后，需点击页面顶部的"重启服务"按钮使新配置生效
                 </div>
+
+                <!-- EPG 节目单聚合（issue #38）：独立保存，无需重启 -->
+                <div style="margin-top: 28px; border-top: 1px solid #eee; padding-top: 20px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div style="font-size:16px; font-weight:600; color:#333;">📅 EPG 节目单源（聚合）</div>
+                            <div class="system-config-hint">把外部 XMLTV 源的节目单归一后合并进 <code>/playback.xml</code>，给咪咕未覆盖的频道补节目单。默认已开启、内置默认源，开箱即用。改动即时保存、无需重启，下次更新生效（或点「立即刷新」）。</div>
+                        </div>
+                        <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                            <input type="checkbox" id="epgEnabled" onchange="setEpgEnabled(this.checked)">
+                            启用 EPG 聚合
+                        </label>
+                    </div>
+
+                    <div id="epgSourceList" style="margin-top:14px;"></div>
+
+                    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                        <div style="flex:1; min-width:120px;">
+                            <label style="display:block; font-size:12px; color:#888;">名称</label>
+                            <input type="text" id="epgNewName" placeholder="例如 我的EPG" style="width:100%;">
+                        </div>
+                        <div style="flex:2; min-width:200px;">
+                            <label style="display:block; font-size:12px; color:#888;">XMLTV 地址（支持 .xml / .xml.gz）</label>
+                            <input type="text" id="epgNewUrl" placeholder="http://.../epg.xml.gz" style="width:100%;">
+                        </div>
+                        <div style="width:110px;">
+                            <label style="display:block; font-size:12px; color:#888;">间隔(分钟)</label>
+                            <input type="number" id="epgNewInterval" value="720" style="width:100%;">
+                        </div>
+                        <div style="width:90px;">
+                            <label style="display:block; font-size:12px; color:#888;">优先级</label>
+                            <input type="number" id="epgNewPriority" value="10" style="width:100%;">
+                        </div>
+                        <button class="btn btn-sm btn-success" onclick="addEpgSource()">➕ 添加源</button>
+                    </div>
+
+                    <div style="margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <button class="btn btn-sm" onclick="refreshEpgNow()">🔄 立即刷新并应用</button>
+                        <span class="system-config-hint" style="margin:0;">优先级数字小者优先；多源命中同一频道取高优先级。咪咕已有的频道始终优先，外部不会覆盖。</span>
+                    </div>
+                </div>
             </div>
-            
+
             <!-- 关于我们面板 -->
             <div class="panel">
                 <div style="max-width: 800px; margin: 0 auto; padding: 40px 20px;">
@@ -2095,6 +2136,7 @@
         };
         let systemConfig = {};
         let updatingSourceIndex = null; // 记录正在更新的源索引
+        let epgConfig = { enabled: true, sources: [] }; // EPG 聚合源配置（issue #38）
 
         // Tab 切换功能
         async function switchTab(index) {
@@ -2124,6 +2166,118 @@
                 isViewingDeleted = false;
                 await loadMyPlaylist();
             }
+            // 切换到系统配置Tab时刷新 EPG 源状态（抓取时间/匹配数等）
+            if (index === 2) {
+                loadEpgSources();
+            }
+        }
+
+        // ===== EPG 节目单聚合（issue #38）=====
+        async function loadEpgSources() {
+            try {
+                const res = await fetch(API_PREFIX + '/api/epg-sources');
+                const payload = await res.json();
+                if (payload && payload.success && payload.data) {
+                    epgConfig = payload.data;
+                    if (!Array.isArray(epgConfig.sources)) epgConfig.sources = [];
+                    renderEpgSources();
+                }
+            } catch (e) {
+                console.error('加载 EPG 源失败', e);
+            }
+        }
+
+        function epgStatusHtml(s) {
+            let color = '#999', text = '未抓取';
+            if (s.lastStatus === 'ok') { color = '#52c41a'; text = '正常'; }
+            else if (typeof s.lastStatus === 'string' && s.lastStatus.indexOf('失败') >= 0) { color = '#ff4d4f'; text = s.lastStatus; }
+            const when = s.lastUpdated ? new Date(s.lastUpdated).toLocaleString() : '从未';
+            return `<span style="color:${color};">● ${escapeHtml(text)}</span>` +
+                `<span style="color:#888;"> · 频道 ${s.channelCount || 0} · 已匹配 ${s.matchedCount || 0} · 上次 ${escapeHtml(when)}</span>`;
+        }
+
+        function renderEpgSources() {
+            const box = document.getElementById('epgSourceList');
+            if (!box) return;
+            const cb = document.getElementById('epgEnabled');
+            if (cb) cb.checked = epgConfig.enabled !== false;
+            const sources = epgConfig.sources || [];
+            if (!sources.length) {
+                box.innerHTML = '<div class="system-config-hint" style="margin:0;">暂无 EPG 源，可在下方添加。</div>';
+                return;
+            }
+            box.innerHTML = sources.map((s, i) => `
+                <div style="border:1px solid #eee; border-radius:6px; padding:10px; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                        <label style="display:flex; align-items:center; gap:6px; min-width:0;">
+                            <input type="checkbox" ${s.enabled !== false ? 'checked' : ''} onchange="toggleEpgSource(${i}, this.checked)">
+                            <strong style="word-break:break-all;">${escapeHtml(s.name || '未命名')}</strong>
+                        </label>
+                        <button class="btn btn-sm btn-danger" onclick="deleteEpgSource(${i})">🗑️ 删除</button>
+                    </div>
+                    <div style="font-size:12px; color:#888; word-break:break-all; margin:4px 0;">${escapeHtml(s.url || '')}</div>
+                    <div style="font-size:12px; margin-bottom:6px;">${epgStatusHtml(s)}</div>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; font-size:12px; color:#888;">
+                        <span>间隔(分钟) <input type="number" value="${s.refreshInterval || 720}" style="width:84px;" onchange="updateEpgSource(${i}, { refreshInterval: this.value })"></span>
+                        <span>优先级 <input type="number" value="${s.priority != null ? s.priority : 10}" style="width:64px;" onchange="updateEpgSource(${i}, { priority: this.value })"></span>
+                    </div>
+                </div>`).join('');
+        }
+
+        async function epgPost(body) {
+            const res = await fetch(API_PREFIX + '/api/epg-sources', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            return res.json();
+        }
+
+        async function setEpgEnabled(enabled) {
+            const r = await epgPost({ action: 'setEnabled', enabled });
+            if (r.success) { epgConfig = r.data; renderEpgSources(); showStatus(enabled ? '已启用 EPG 聚合' : '已关闭 EPG 聚合', 'success'); }
+            else { showStatus(r.message || '操作失败', 'error'); loadEpgSources(); }
+        }
+
+        async function addEpgSource() {
+            const source = {
+                name: document.getElementById('epgNewName').value,
+                url: document.getElementById('epgNewUrl').value,
+                refreshInterval: document.getElementById('epgNewInterval').value,
+                priority: document.getElementById('epgNewPriority').value
+            };
+            const r = await epgPost({ action: 'add', source });
+            if (r.success) {
+                epgConfig = r.data; renderEpgSources();
+                document.getElementById('epgNewName').value = '';
+                document.getElementById('epgNewUrl').value = '';
+                showStatus('已添加 EPG 源，下次更新生效（或点「立即刷新」）', 'success');
+            } else {
+                showStatus(r.message || '添加失败', 'error');
+            }
+        }
+
+        async function toggleEpgSource(i, enabled) {
+            const r = await epgPost({ action: 'update', index: i, fields: { enabled } });
+            if (r.success) epgConfig = r.data; else { showStatus(r.message || '操作失败', 'error'); loadEpgSources(); }
+        }
+
+        async function updateEpgSource(i, fields) {
+            const r = await epgPost({ action: 'update', index: i, fields });
+            if (r.success) epgConfig = r.data; else { showStatus(r.message || '操作失败', 'error'); loadEpgSources(); }
+        }
+
+        async function deleteEpgSource(i) {
+            const confirmed = await showConfirm('确定要删除这个 EPG 源吗？');
+            if (!confirmed) return;
+            const r = await epgPost({ action: 'remove', index: i });
+            if (r.success) { epgConfig = r.data; renderEpgSources(); showStatus('已删除', 'success'); }
+            else showStatus(r.message || '删除失败', 'error');
+        }
+
+        async function refreshEpgNow() {
+            const r = await epgPost({ action: 'refresh' });
+            showStatus(r.message || (r.success ? '已触发刷新' : '操作失败'), r.success ? 'info' : 'error');
         }
 
         // 加载数据
@@ -2168,6 +2322,9 @@
                 }
                 systemConfig = await systemRes.json();
                 console.log('系统配置加载成功');
+
+                // 加载 EPG 聚合源配置（issue #38）；失败不影响其余加载
+                loadEpgSources();
                 
                 // 加载配置档列表（多套 m3u），再加载当前档的我的频道配置
                 console.log('请求配置档列表...');
