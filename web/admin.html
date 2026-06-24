@@ -1553,17 +1553,18 @@
             border-color: #1890ff;
         }
 
-        /* 刚编辑过的频道临时高亮（issue #50）：黄色描边 + 一次性脉冲，约 4s 后由 JS 移除。
+        /* 刚编辑过的频道临时高亮（issue #50）：小清新绿色描边 + 一次性脉冲，约 4s 后由 JS 移除。
+           复用项目成功提示的 Ant 绿（#f6ffed/#52c41a）。
            background/border-color 须 !important，否则 :hover 的浅蓝背景会盖掉高亮。 */
         .my-playlist-channel.recently-edited {
-            background: #fff7e6 !important;
-            border-color: #ffb800 !important;
-            box-shadow: 0 0 0 2px rgba(255, 184, 0, 0.35);
+            background: #f6ffed !important;
+            border-color: #52c41a !important;
+            box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.35);
             animation: editPulse 1.2s ease-out;
         }
         @keyframes editPulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.65); }
-            100% { box-shadow: 0 0 0 2px rgba(255, 184, 0, 0.35); }
+            0% { box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.6); }
+            100% { box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.35); }
         }
 
         .my-playlist-channel-name {
