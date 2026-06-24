@@ -1,26 +1,70 @@
 import puppeteer from "puppeteer"
+import { existsSync } from "node:fs"
 import { printBlue, printGreen, printRed } from "./colorOut.js"
+
+// 各平台系统已安装的 Chrome / Chromium / Edge 常见可执行路径（按优先级）
+const SYSTEM_CHROME_PATHS = {
+  darwin: [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  ],
+  linux: [
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ],
+  win32: [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ],
+}
+
+// 探测系统已安装的浏览器可执行文件，找到第一个存在的返回，否则 null
+function findSystemChrome() {
+  for (const p of (SYSTEM_CHROME_PATHS[process.platform] || [])) {
+    if (existsSync(p)) return p
+  }
+  return null
+}
 
 /**
  * 启动 Chromium / Chrome，按以下顺序尽量找到可用浏览器，降低「Could not find Chrome」的踩坑概率：
- *   1) 环境变量 PUPPETEER_EXECUTABLE_PATH / mchromePath 显式指定的可执行文件（最高优先）
- *   2) puppeteer 自带、用 `npx puppeteer browsers install chrome` 下载的 Chrome
- *   3) 找不到自带的时，回退系统已安装的 Google Chrome（channel: 'chrome'），
- *      省去用户必须先下载特定版本 Chrome 的麻烦
+ *   1) 环境变量 PUPPETEER_EXECUTABLE_PATH / mchromePath 显式指定（最高优先；Docker 镜像即指向 /usr/bin/chromium）
+ *   2) 系统已安装的 Google Chrome / Chromium / Edge（裸跑首选，避开 puppeteer 自带 Chrome
+ *      在部分机器上下载失败 / 被安全软件删库的坑，无需任何环境变量即可开箱即用）
+ *   3) puppeteer 自带、用 `npx puppeteer browsers install chrome` 下载的 Chrome
+ *   4) 最后兜底 channel: 'chrome'（再让 puppeteer 自己找系统 Chrome）
  * @param {boolean} headless
  */
 async function launchBrowser(headless) {
   const baseArgs = ['--no-sandbox', '--disable-setuid-sandbox']
-  const execPath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.mchromePath
-  if (execPath) {
-    return puppeteer.launch({ headless, args: baseArgs, executablePath: execPath })
+
+  // 1) 显式指定
+  const explicit = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.mchromePath
+  if (explicit) {
+    return puppeteer.launch({ headless, args: baseArgs, executablePath: explicit })
   }
+
+  // 2) 系统已安装的浏览器
+  const systemChrome = findSystemChrome()
+  if (systemChrome) {
+    try {
+      const browser = await puppeteer.launch({ headless, args: baseArgs, executablePath: systemChrome })
+      printBlue(`使用系统浏览器: ${systemChrome}`)
+      return browser
+    } catch (err) {
+      printRed(`系统浏览器启动失败(${systemChrome})，改用 puppeteer 自带: ${(err?.message || err).split('\n')[0]}`)
+    }
+  }
+
+  // 3) puppeteer 自带；4) 失败再兜底 channel: 'chrome'
   try {
     return await puppeteer.launch({ headless, args: baseArgs })
   } catch (err) {
-    // 自带 Chrome 未下载/未找到时，尝试系统已安装的 Google Chrome
     if (/Could not find Chrome|Browser was not found|Failed to launch|Could not find expected browser/i.test(err?.message || '')) {
-      printRed('未找到 puppeteer 自带 Chrome，尝试使用系统已安装的 Google Chrome（channel: chrome）…')
+      printRed('puppeteer 自带 Chrome 不可用，尝试 channel: chrome…')
       return puppeteer.launch({ headless, args: baseArgs, channel: 'chrome' })
     }
     throw err
