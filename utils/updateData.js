@@ -1,6 +1,8 @@
 import { getAllChannels, updateExternalSources, updateBuiltInSources, externalSourceManager } from "./channelMerger.js"
 import { appendFile, appendFileSync, copyFileSync, renameFileSync, writeFile, writeFileSync } from "./fileUtil.js"
 import { updatePlaybackData } from "./playback.js"
+import { aggregateExternalEpg } from "./epgAggregator.js"
+import { normalizeKey } from "./channelNormalize.js"
 import { refreshToken as enableTokenRefresh, host, pass, token, userId, enableMigu, externalLogoBase } from "../config.js"
 import refreshToken from "./refreshToken.js"
 import { printGreen, printRed, printYellow, printBlue } from "./colorOut.js"
@@ -127,6 +129,9 @@ async function updateTV(hours, options = {}) {
 
   // 分组列表
   const includeExternalInPlaylists = externalSourceManager.sources?.includeInPlaylists !== false
+  // EPG 聚合（issue #38）用：本次写入播放列表的频道原始名 + 已由咪咕给到 EPG 的频道归一 key
+  const playlistChannelNames = []
+  const epgCoveredKeys = new Set()
   for (let i = 0; i < datas.length; i++) {
 
     const data = datas[i].dataList
@@ -162,10 +167,16 @@ async function updateTV(hours, options = {}) {
         continue
       }
 
+      // 记录实际进入播放列表的频道名，供 EPG 聚合配对
+      playlistChannelNames.push(channelItem.name)
+
       // regenerateOnly模式下跳过playback更新（仅更新播放列表）
       // 内置源和外部源不需要playback数据
       if (!isExternal && !isBuiltIn && !regenerateOnly) {
-        await updatePlaybackData(channelItem, playbackFile)
+        // 咪咕成功写入 EPG 的频道记为「已覆盖」，外部 EPG 不再为其重复补充
+        if (await updatePlaybackData(channelItem, playbackFile)) {
+          epgCoveredKeys.add(normalizeKey(channelItem.name))
+        }
       }
 
       // 写入节目
@@ -179,6 +190,12 @@ async function updateTV(hours, options = {}) {
 
   // regenerateOnly模式下跳过playback文件生成
   if (!regenerateOnly) {
+    // EPG 聚合（issue #38）：为咪咕未覆盖的频道，从外部 XMLTV 源补节目单。失败不影响基础节目单。
+    try {
+      await aggregateExternalEpg(playbackFile, playlistChannelNames, epgCoveredKeys)
+    } catch (e) {
+      printYellow(`EPG 聚合失败（不影响基础节目单）: ${e.message}`)
+    }
     appendFileSync(playbackFile, `</tv>\n`)
     renameFileSync(playbackFile, playbackFile.replace(".bak", ""))
   }
