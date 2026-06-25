@@ -2,7 +2,7 @@ import http from "node:http"
 import { readFileSync, mkdirSync } from "node:fs"
 import { createRequire } from "node:module"
 import fetch from 'node-fetch'
-import { adminPath, host, pass, port, programInfoUpdateInterval, token, userId, enableMigu, enableBuiltInSubscriptions } from "./config.js";
+import { adminPath, host, pass, port, programInfoUpdateInterval, token, userId, enableMigu, enableBuiltInSubscriptions, enableUserTokens } from "./config.js";
 import { getDateTimeStr } from "./utils/time.js";
 import update from "./utils/updateData.js";
 import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
@@ -14,6 +14,8 @@ import { getChannelsAPI, getExternalSourcesAPI, saveExternalSourcesAPI,
          uploadLogoAPI, removeLogoAPI, copyChannelToGroupsAPI, getBuiltInSourcesAPI } from "./utils/adminAPI.js";
 import { getEpgSourcesAPI, setEpgEnabledAPI, addEpgSourceAPI, updateEpgSourceAPI,
          removeEpgSourceAPI, expireEpgSourcesAPI } from "./utils/epgSourcesAPI.js";
+import { userManager } from "./utils/userManager.js";
+import { getUsersAPI, addUserAPI, updateUserAPI, removeUserAPI, regenUserTokenAPI, setRequireTokenAPI } from "./utils/usersAPI.js";
 import { getSystemConfigAPI, saveSystemConfigAPI } from "./utils/systemConfigAPI.js";
 import { readConfig, saveConfig, parseInterfaceTxt, validateGroupConfig, applyConfig,
          listProfiles, createProfile, renameProfile, deleteProfile } from "./utils/playlistConfig.js";
@@ -60,13 +62,40 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // ---- 统一访问密码前缀处理 ----
-  // pass 为空：全部放行；pass 非空：只有 /<pass>/... 视为已授权。
-  // routePath 为剥离密码前缀后的路径，用于后续所有路由匹配。
+  // ---- 访问鉴权（两类钥匙，职责分离）----
+  // passAuthed：站长密码 pass，全权（含后台 / 播放器 / API）。
+  // userAuthed：用户访问令牌 /u/<token>，仅内容（进不了后台）。
+  // accessPrefix：写回分发链接的前缀，让令牌 / 密码贯穿每个频道与 EPG 地址。
   let passAuthed = pass === ""
+  let userAuthed = false
+  let currentUser = null
+  let accessPrefix = ""
   let routePath = urlPath
-  if (pass !== "" && (urlPath === `/${pass}` || urlPath.startsWith(`/${pass}/`))) {
+
+  // 用户访问令牌 /u/<token>/...：仅在启用且已有用户时才介入（无用户时对老部署完全无感）
+  if (enableUserTokens && userManager.hasUsers()) {
+    const tm = urlPath.match(/^\/u\/([A-Za-z0-9_-]{8,64})(?:\/(.*))?$/)
+    if (tm) {
+      const u = userManager.findByToken(tm[1])
+      if (u && userManager.isUsable(u)) {
+        userAuthed = true
+        currentUser = u
+        accessPrefix = `/u/${tm[1]}`
+        routePath = "/" + (tm[2] || "")
+        userManager.recordUsage(u)
+      } else {
+        // 令牌无效 / 已停用 / 已过期 → 直接拒绝，使吊销立即生效
+        res.writeHead(403, { 'Content-Type': 'text/plain;charset=UTF-8' })
+        res.end('访问令牌无效或已停用')
+        return
+      }
+    }
+  }
+
+  // 站长密码前缀（未走用户令牌时）：pass 为空全部放行；pass 非空只有 /<pass>/... 授权
+  if (!userAuthed && pass !== "" && (urlPath === `/${pass}` || urlPath.startsWith(`/${pass}/`))) {
     passAuthed = true
+    accessPrefix = `/${pass}`
     routePath = urlPath.slice(`/${pass}`.length) || "/"
   }
 
@@ -253,6 +282,36 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify(result));
         printGreen(`EPG 源 ${data.action} 操作完成`)
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify({ success: false, message: error.message }));
+      }
+      return
+    }
+
+    // 用户访问令牌管理 API（一人一源）。仅站长 pass 可达（本 /api/ 块已由 passAuthed 把关）
+    if (routePath === '/api/users' && method === 'GET') {
+      const result = getUsersAPI()
+      res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
+      res.end(JSON.stringify(result));
+      return
+    }
+
+    if (routePath === '/api/users' && method === 'POST') {
+      try {
+        const data = JSON.parse(await readBody(req))
+        let result
+        switch (data.action) {
+          case 'add': result = addUserAPI(data.user || {}); break
+          case 'update': result = updateUserAPI(data.id, data.fields || {}); break
+          case 'remove': result = removeUserAPI(data.id); break
+          case 'regenToken': result = regenUserTokenAPI(data.id); break
+          case 'setRequireToken': result = setRequireTokenAPI(data.requireToken); break
+          default: result = { success: false, message: '未知操作' }
+        }
+        res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json;charset=UTF-8' });
+        res.end(JSON.stringify(result));
+        printGreen(`用户 ${data.action} 操作完成`)
       } catch (error) {
         res.writeHead(400, { 'Content-Type': 'application/json;charset=UTF-8' });
         res.end(JSON.stringify({ success: false, message: error.message }));
@@ -461,8 +520,8 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // 设置密码但未授权访问（非 admin/player/api 路由）：拒绝
-  if (pass !== "" && !passAuthed) {
+  // 设置密码但未授权访问（非 admin/player/api 路由）：拒绝。用户访问令牌(userAuthed)放行内容
+  if (pass !== "" && !passAuthed && !userAuthed) {
     printRed(`身份认证失败`)
     res.writeHead(403, { 'Content-Type': 'application/json;charset=UTF-8' });
     res.end(`身份认证失败`);
@@ -551,7 +610,9 @@ const server = http.createServer(async (req, res) => {
 
   // 接口
   if (interfaceList.indexOf(routeUrlPath) !== -1) {
-    const interfaceObj = interfaceStr(routeUrlPath, headers, urlUserId, urlToken, profileParam)
+    // 用户绑定了档则用其绑定档（一人一内容），否则用 query 的 ?profile=
+    const effectiveProfile = (currentUser && currentUser.profile) ? currentUser.profile : profileParam
+    const interfaceObj = interfaceStr(routeUrlPath, headers, urlUserId, urlToken, effectiveProfile, accessPrefix)
     if (interfaceObj.content == null) {
       interfaceObj.content = "获取失败"
     }
@@ -608,6 +669,9 @@ process.on('uncaughtException', (err) => {
 
 server.listen(port, async () => {
   const updateInterval = parseInt(programInfoUpdateInterval)
+
+  // 用户令牌用量（最近访问 / 次数）节流落盘：内存累加，每 60 秒 flush 一次，避免每请求写磁盘
+  setInterval(() => userManager.flushUsage(), 60 * 1000)
 
   // 定时任务1: 完整更新（咪咕 + 外部源 + 节目单）
   setInterval(async () => {

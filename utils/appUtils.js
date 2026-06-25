@@ -8,7 +8,7 @@ import { readConfig, parseInterfaceTxt, applyConfig, generateM3u8, generateTxt }
 // url缓存 降低请求频率
 const urlCache = {}
 
-function interfaceStr(url, headers, urlUserId, urlToken, profile) {
+function interfaceStr(url, headers, urlUserId, urlToken, profile, accessPrefix) {
 
   let result = {
     content: null,
@@ -105,10 +105,15 @@ function interfaceStr(url, headers, urlUserId, urlToken, profile) {
     replaceHost = `${proto}://${actualHost}`
   }
 
-  if (pass != "") {
+  // 访问前缀：调用方传入（用户令牌 `/u/<token>` 或站长 `/<pass>`）。
+  // 兼容旧调用：未传时回退到原 pass 逻辑。让令牌/密码贯穿分发出去的每个频道与 EPG 地址。
+  if (accessPrefix !== undefined) {
+    if (accessPrefix) replaceHost = `${replaceHost}${accessPrefix}`
+  } else if (pass != "") {
     replaceHost = `${replaceHost}/${pass}`
   }
 
+  // 咪咕 VIP 账号经 URL 注入（站长用 /<pass>/<userId>/<token>/m3u 的场景）；用户令牌请求已剥离成无账号段，不触发
   if (urlUserId != userId && urlToken != token) {
     replaceHost = `${replaceHost}/${urlUserId}/${urlToken}`
   }

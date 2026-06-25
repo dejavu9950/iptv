@@ -8,6 +8,7 @@ node_modules
 external-sources.json
 system-config.json
 epg-sources.json
+users.json
 
 # 生成的播放列表文件（根据配置自动生成）
 interface.txt

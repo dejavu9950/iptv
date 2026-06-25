@@ -2027,6 +2027,28 @@
                         <span class="system-config-hint" style="margin:0;">优先级数字小者优先；多源命中同一频道取高优先级。咪咕已有的频道始终优先，外部不会覆盖。</span>
                     </div>
                 </div>
+
+                <!-- 用户访问令牌（一人一源）-->
+                <div style="margin-top: 28px; border-top: 1px solid #eee; padding-top: 20px;">
+                    <div>
+                        <div style="font-size:16px; font-weight:600; color:#333;">👤 用户管理（一人一源）</div>
+                        <div class="system-config-hint">给每个家人 / 朋友生成独立的源地址 <code>/u/&lt;令牌&gt;/m3u</code>，可单独停用、泄露可追溯，且<strong>令牌进不了本后台</strong>。不新增用户则对现有链接零影响。</div>
+                    </div>
+
+                    <div id="userList" style="margin-top:14px;"></div>
+
+                    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                        <div style="flex:1; min-width:140px;">
+                            <label style="display:block; font-size:12px; color:#888;">用户名称</label>
+                            <input type="text" id="userNewName" placeholder="例如 客厅电视 / 张三" style="width:100%;">
+                        </div>
+                        <div style="min-width:150px;">
+                            <label style="display:block; font-size:12px; color:#888;">绑定档（频道内容）</label>
+                            <select id="userNewProfile" style="width:100%;"></select>
+                        </div>
+                        <button class="btn btn-sm btn-success" onclick="addUser()">➕ 新增用户</button>
+                    </div>
+                </div>
             </div>
 
             <!-- 关于我们面板 -->
@@ -2166,9 +2188,10 @@
                 isViewingDeleted = false;
                 await loadMyPlaylist();
             }
-            // 切换到系统配置Tab时刷新 EPG 源状态（抓取时间/匹配数等）
+            // 切换到系统配置Tab时刷新 EPG 源状态（抓取时间/匹配数等）与用户列表（最近访问/次数）
             if (index === 2) {
                 loadEpgSources();
+                loadUsers();
             }
         }
 
@@ -2280,6 +2303,127 @@
             showStatus(r.message || (r.success ? '已触发刷新' : '操作失败'), r.success ? 'info' : 'error');
         }
 
+        // ===== 用户管理（一人一源，访问令牌）=====
+        let usersConfig = { requireToken: false, users: [] };
+
+        async function loadUsers() {
+            try {
+                if (typeof loadProfiles === 'function') { try { await loadProfiles(); } catch (e) {} }
+                const res = await fetch(API_PREFIX + '/api/users');
+                const payload = await res.json();
+                if (payload && payload.success && payload.data) {
+                    usersConfig = payload.data;
+                    if (!Array.isArray(usersConfig.users)) usersConfig.users = [];
+                    renderUsers();
+                    fillUserProfileSelect(document.getElementById('userNewProfile'), '');
+                }
+            } catch (e) { console.error('加载用户失败', e); }
+        }
+
+        function userProfileOptionList() {
+            const list = (typeof profileList !== 'undefined' && Array.isArray(profileList)) ? profileList : [];
+            const opts = [{ value: '', name: '默认（全量）' }];
+            for (const p of list) {
+                if (p && p.id && p.id !== 'default') opts.push({ value: p.id, name: p.name || p.id });
+            }
+            return opts;
+        }
+
+        function fillUserProfileSelect(sel, selected) {
+            if (!sel) return;
+            sel.innerHTML = userProfileOptionList()
+                .map(o => `<option value="${escapeHtml(o.value)}"${o.value === (selected || '') ? ' selected' : ''}>${escapeHtml(o.name)}</option>`)
+                .join('');
+        }
+
+        function userLink(token, kind) {
+            return window.location.origin + '/u/' + token + '/' + kind;
+        }
+
+        function renderUsers() {
+            const box = document.getElementById('userList');
+            if (!box) return;
+            const users = usersConfig.users || [];
+            if (!users.length) {
+                box.innerHTML = '<div class="system-config-hint" style="margin:0;">还没有用户。新增后会得到一个独立的 /u/&lt;令牌&gt;/m3u 源地址，发给对应的人即可。</div>';
+                return;
+            }
+            box.innerHTML = users.map(u => {
+                const m3u = userLink(u.token, 'm3u');
+                const pb = userLink(u.token, 'playback.xml');
+                const txt = userLink(u.token, 'txt');
+                const last = u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString() : '从未';
+                const profOpts = userProfileOptionList()
+                    .map(o => `<option value="${escapeHtml(o.value)}"${o.value === (u.profile || '') ? ' selected' : ''}>${escapeHtml(o.name)}</option>`).join('');
+                return `
+                <div style="border:1px solid #eee;border-radius:6px;padding:10px;margin-bottom:8px;${u.enabled === false ? 'opacity:.6;' : ''}">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" ${u.enabled !== false ? 'checked' : ''} onchange="toggleUser('${u.id}', this.checked)">
+                            <strong>${escapeHtml(u.name || '未命名')}</strong>
+                        </label>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <button class="btn btn-sm" onclick="regenUserToken('${u.id}')" title="生成新令牌，旧链接立即失效">🔁 重置令牌</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">删除</button>
+                        </div>
+                    </div>
+                    <div style="font-size:12px;color:#888;margin:6px 0;word-break:break-all;">源地址：<span style="font-family:monospace;">${escapeHtml(m3u)}</span></div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                        <button class="btn btn-sm" onclick="copyToClipboard('${m3u.replace(/'/g, "\\'")}', 'm3u 源地址')">📋 复制 m3u</button>
+                        <button class="btn btn-sm" onclick="copyToClipboard('${pb.replace(/'/g, "\\'")}', 'EPG 地址')">📋 复制 EPG</button>
+                        <button class="btn btn-sm" onclick="copyToClipboard('${txt.replace(/'/g, "\\'")}', 'txt 地址')">📋 复制 txt</button>
+                        <span style="font-size:12px;color:#888;">绑定档 <select onchange="updateUserProfile('${u.id}', this.value)" style="font-size:12px;">${profOpts}</select></span>
+                    </div>
+                    <div style="font-size:12px;color:#999;margin-top:6px;">最近访问：${escapeHtml(last)} · 请求数 ${u.reqCount || 0}</div>
+                </div>`;
+            }).join('');
+        }
+
+        async function usersPost(body) {
+            const res = await fetch(API_PREFIX + '/api/users', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+            });
+            return res.json();
+        }
+
+        async function addUser() {
+            const name = document.getElementById('userNewName').value;
+            const profile = document.getElementById('userNewProfile').value;
+            const r = await usersPost({ action: 'add', user: { name, profile } });
+            if (r.success) {
+                usersConfig = r.data; renderUsers();
+                document.getElementById('userNewName').value = '';
+                showStatus('已新增用户，可复制其源地址发给对方', 'success');
+            } else showStatus(r.message || '新增失败', 'error');
+        }
+
+        async function toggleUser(id, enabled) {
+            const r = await usersPost({ action: 'update', id, fields: { enabled } });
+            if (r.success) { usersConfig = r.data; renderUsers(); showStatus(enabled ? '已启用' : '已停用（该链接立即失效）', 'success'); }
+            else { showStatus(r.message || '操作失败', 'error'); loadUsers(); }
+        }
+
+        async function updateUserProfile(id, profile) {
+            const r = await usersPost({ action: 'update', id, fields: { profile } });
+            if (r.success) usersConfig = r.data; else { showStatus(r.message || '操作失败', 'error'); loadUsers(); }
+        }
+
+        async function deleteUser(id) {
+            const confirmed = await showConfirm('确定删除这个用户吗？其源地址将立即失效。');
+            if (!confirmed) return;
+            const r = await usersPost({ action: 'remove', id });
+            if (r.success) { usersConfig = r.data; renderUsers(); showStatus('已删除', 'success'); }
+            else showStatus(r.message || '删除失败', 'error');
+        }
+
+        async function regenUserToken(id) {
+            const confirmed = await showConfirm('重置令牌后，该用户旧的源地址会立即失效，需要把新地址重新发给他。继续？');
+            if (!confirmed) return;
+            const r = await usersPost({ action: 'regenToken', id });
+            if (r.success) { usersConfig = r.data; renderUsers(); showStatus('已重置令牌，请把新地址重新发给对方', 'success'); }
+            else showStatus(r.message || '操作失败', 'error');
+        }
+
         // 加载数据
         async function loadData() {
             try {
@@ -2325,6 +2469,9 @@
 
                 // 加载 EPG 聚合源配置（issue #38）；失败不影响其余加载
                 loadEpgSources();
+
+                // 加载用户管理（一人一源）；失败不影响其余加载
+                loadUsers();
                 
                 // 加载配置档列表（多套 m3u），再加载当前档的我的频道配置
                 console.log('请求配置档列表...');
