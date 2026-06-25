@@ -1935,9 +1935,10 @@
                         <input type="text" id="sysAdminPath" placeholder="admin">
                         <div class="system-config-hint">自定义后台地址（默认 admin），如填 <code>console</code> 则用 <code>/console</code> 访问，<code>/admin</code> 将失效；保存后需用新地址访问（api / player / favicon.ico 为保留字）</div>
                     </div>
-                    <div class="system-config-item" style="display: none;">
+                    <div class="system-config-item">
                         <label>节目单更新间隔（小时）</label>
-                        <input type="number" id="sysProgramInterval" placeholder="6">
+                        <input type="number" id="sysProgramInterval" placeholder="8">
+                        <div class="system-config-hint" style="color:#d4380d;">⚠️ 咪咕频道 / EPG / 体育的全量更新间隔。<strong>不建议设太短</strong>——过于频繁请求咪咕接口可能触发风控，建议 ≥ 4 小时；修改后需点顶部「重启服务」才生效。</div>
                     </div>
                     <div class="system-config-item" style="display: none;">
                         <label>
